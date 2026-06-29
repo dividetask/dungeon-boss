@@ -341,7 +341,11 @@ class Game
   def build_agents(agents_by_name)
     @players.each_with_object({}) do |player, map|
       agent = agents_by_name[player.name]
-      map[player] = agent if agent
+      next unless agent
+
+      # Some agents (e.g. LogicAgent) read the town to weigh their choices.
+      agent.attach(self) if agent.respond_to?(:attach)
+      map[player] = agent
     end
   end
 

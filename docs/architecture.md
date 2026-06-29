@@ -85,7 +85,14 @@ keyed by `effect` (bosses/rooms/ability cards) or by hero `id` (`HeroAbility`).
 |                 | +damage, zero, set-to-N, unreducible, or retreat-at-room (Retreat).    |
 | `DungeonSummary`| Read-only totals for a dungeon: total damage and bait icons by type. |
 | `RandomAgent`   | An automated player: given a `Decision`, pick a random option (and    |
-|                 | randomly skip when building is optional). Used to control opponents.  |
+|                 | randomly skip when building is optional). A simple opponent / baseline. |
+| `DungeonForecast` | Forecast how a set of parties would fare crawling a dungeon: heroes |
+|                 | killed (points), parties that survive (wounds), and damage dealt. Runs  |
+|                 | each crawl against a clone, so the real dungeon is never mutated.     |
+| `LogicAgent`    | An automated player driven by the declarative heuristics in            |
+|                 | `data/ai_logic.yaml`: scores a `Decision`'s candidates with the         |
+|                 | configured tie-break chain (static card comparators + `DungeonForecast` |
+|                 | simulations). The default web-app opponent. See [ai.md](ai.md).        |
 | `CrawlLog`      | *(web app only)* Appends a readable record of every crawl — dungeon,   |
 |                 | party, per-room hits, deaths, grow/draw results — to a log file for   |
 |                 | debugging. `Game` calls it when a logger is supplied; silent otherwise.|
@@ -100,10 +107,11 @@ ability cards or discard-to-boost a room (`CrawlModifiers`); the build-phase
 discard can also be **undone** until the player finishes building. On a quiet
 round (no party enters) players may play Blueprints, then continue.
 
-A player may instead be controlled by an **agent** (e.g. `RandomAgent`). `Game`
-is given a map of player → agent; decisions for an agent-controlled player are
-resolved by the agent automatically and never surface to the human. The web app
-uses this to make Player 2 a random computer opponent.
+A player may instead be controlled by an **agent** (`RandomAgent` for a random
+baseline, or `LogicAgent` for the heuristic opponent — see [ai.md](ai.md)).
+`Game` is given a map of player → agent; decisions for an agent-controlled player
+are resolved by the agent automatically and never surface to the human. The web
+app uses this to make Players 2…N computer opponents.
 
 | Class          | Responsibility                                                        |
 |----------------|-----------------------------------------------------------------------|

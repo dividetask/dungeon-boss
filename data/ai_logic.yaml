@@ -1,0 +1,59 @@
+# Dungeon Boss — AI heuristics for the LogicAgent (see docs/ai.md).
+#
+# This file is *data*, not code: it tunes how the computer opponent decides,
+# without touching Ruby. It mirrors the project's existing pattern where card
+# `effect`s are declarative data interpreted by Ruby (BossEffect / RoomEffect /
+# AbilityEffect). Here, LogicAgent is the interpreter.
+#
+# One key per decision the game asks an agent to make (see Decision::KINDS):
+#   choose_boss        pick one of two drawn bosses
+#   place_first_room   Setup: place a room beside the boss
+#   discard_room       Build: throw one room from hand away
+#   build_room         Build: place a room (add to the left / replace a slot /
+#                      attach an upgrade / drop an advanced room), or build nothing
+#
+# Each value is an ordered list of `prefer:` rules forming a TIE-BREAK CHAIN:
+# the first rule scores every candidate and keeps only the best; surviving ties
+# pass to the next rule; any ties left after the last rule are broken at random.
+#
+# Comparators a `prefer:` rule understands
+#   highest_damage     most printed damage (boss/room damage; an upgrade's bonus)
+#   lowest_damage      least printed damage (used to throw away the weakest room)
+#   bait_count         most total bait icons on the card (more luring)
+#   [glory, riches, ...]  a bait-priority list: prefer the card with the most
+#                      icons of the first-listed bait, breaking ties by the next,
+#                      and so on. Bait names are exactly glory/riches/undead/power.
+#   most_points        SIMULATION: run the current town heroes through the dungeon
+#                      this move would produce and prefer the most hero deaths
+#                      (each death scores the owner a point).
+#   fewest_wounds      SIMULATION: prefer the fewest surviving parties. The owner
+#                      takes one wound per party that survives, so "fewest wounds"
+#                      is the damage the owner avoids. (interpretation: the player
+#                      described this as the placement leading to "the minimum
+#                      damage" — the owner's only damage is wounds-from-survivors.)
+#   highest_avg_damage SIMULATION: prefer the most average post-reduction damage
+#                      dealt to the current town heroes (hero damage reduction is
+#                      taken into account). A smooth tie-breaker when no extra
+#                      heroes die: it favours the placement that hurts heroes most.
+#
+# Simulation comparators only bite when there is a dungeon to crawl and heroes in
+# town (i.e. build_room mid-game). At Setup the town is empty, so choose_boss and
+# place_first_room rely on the static comparators above.
+
+choose_boss:
+  - prefer: highest_damage                 # a deadlier boss kills more heroes
+  - prefer: [glory, riches, power, undead]  # then the boss whose bait we prefer
+  - prefer: bait_count                      # then the boss that lures the hardest
+
+place_first_room:
+  - prefer: highest_damage                  # open with the strongest room
+  - prefer: [glory, riches, power, undead]  # tie-break on bait preference
+
+discard_room:
+  - prefer: lowest_damage                   # keep the strong rooms, ditch the weak
+
+build_room:
+  - prefer: most_points                     # play to kill the most heroes in town
+  - prefer: fewest_wounds                   # then to let the fewest survive
+  - prefer: highest_avg_damage              # then to hurt the heroes the most
+  - prefer: highest_damage                  # last resort (e.g. empty town): raw power
