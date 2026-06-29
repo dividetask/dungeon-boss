@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dungeon Boss</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; color: #222; background: #ddd; }
+    .app { max-width: 920px; margin: 0 auto; min-height: 100vh; background: #f6f5f2; padding: .75rem .75rem 5rem; }
+    h1 { font-size: 1.25rem; margin: 0; }
+    h2 { font-size: 1rem; margin: .9rem 0 .35rem; }
+    h3 { font-size: .85rem; margin: .5rem 0 .3rem; color: #555; }
+    .sub { color: #666; font-size: .78rem; margin: .12rem 0; }
+    form { display: inline; margin: 0; }
+    button { font: inherit; cursor: pointer; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+    .topbar button { padding: .4rem .7rem; }
+    .newgame { display: flex; align-items: center; gap: .4rem; }
+    .players-label { font-size: .8rem; color: #444; display: flex; align-items: center; gap: .25rem; }
+    .players-label select { font: inherit; padding: .25rem; }
+
+    .scroller { display: flex; gap: .5rem; overflow-x: auto; padding-bottom: .4rem; -webkit-overflow-scrolling: touch; }
+
+    /* Card look */
+    .card { width: 128px; min-width: 128px; border: 1px solid #b3a98f; border-radius: 10px; padding: .4rem;
+            background: linear-gradient(#fffdf7, #efe9da); box-shadow: 0 1px 3px rgba(0,0,0,.18);
+            display: flex; flex-direction: column; gap: .12rem; }
+    .card-art { font-size: 1.8rem; text-align: center; line-height: 1; background: rgba(0,0,0,.05); border-radius: 8px; padding: .3rem 0; }
+    .card-title { font-weight: bold; font-size: .84rem; }
+    .card-type { font-size: .6rem; color: #6a5; text-transform: uppercase; letter-spacing: .04em; }
+    .card-stats { display: flex; justify-content: space-between; align-items: center; font-size: .8rem; margin-top: .15rem; gap: .2rem; }
+    .card-desc { font-size: .66rem; color: #555; font-style: italic; }
+    .dmg { font-weight: bold; color: #a33; }
+    .dmg-math { font-size: .72rem; color: #c66; margin-top: .1rem; }
+    .breakdown { margin: 1rem 0 1.5rem; }
+    .bd-party { border: 1px solid #ddd; border-radius: 8px; padding: .5rem .7rem; margin-bottom: .6rem; background: #fff; }
+    .bd-head { font-weight: bold; margin-bottom: .3rem; }
+    .bd-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    .bd-table th { text-align: left; color: #777; font-weight: 600; border-bottom: 1px solid #eee; padding: .15rem .3rem; }
+    .bd-table td { padding: .15rem .3rem; border-bottom: 1px solid #f2f2f2; }
+    .bd-table .bd-died td { color: #b00; }
+    .bd-summary { font-size: .82rem; color: #444; margin-top: .35rem; }
+    .hp { font-weight: bold; color: #178; }
+    .pip { display: inline-block; padding: 0 .25rem; border-radius: 9px; font-size: .74rem; }
+    .pip-glory { background: #f6e6a8; } .pip-riches { background: #bfe6c6; }
+    .pip-undead { background: #d8cfe8; } .pip-power { background: #cdd9f7; }
+    .card.boss { background: linear-gradient(#ffe9f3, #f7cfdf); border-color: #c69; }
+    .card.hero { background: linear-gradient(#eef3ff, #d9e4ff); border-color: #8fa8d8; }
+    .card.upgrade { background: linear-gradient(#eafaf0, #cdeed8); border-color: #6a9; }
+    .card.advanced { background: linear-gradient(#fff0f5, #f3d9e6); border-color: #b5739b; }
+    .card.ability { background: linear-gradient(#fffbe9, #f4ead0); border-color: #c9a24b; }
+    .ability-pick.selected { outline: 3px solid #36c; }
+    body.ability-mode .crawl-target { cursor: pointer; outline: 2px dashed #36c; outline-offset: 2px; }
+    body.boost-mode .boost-discard { cursor: pointer; outline: 2px dashed #c60; outline-offset: 2px; }
+    .boost-btn { margin-top: .25rem; font-size: .72rem; padding: .2rem .4rem; cursor: pointer; }
+    .upgrade-badge { margin-top: .2rem; font-size: .68rem; font-weight: bold; color: #2a7; background: #e7f7ec;
+                     border-radius: 6px; padding: .1rem .3rem; }
+    button.card-button { text-align: left; }
+    button.card-button:hover { border-color: #36c; box-shadow: 0 0 0 3px #cfe4ff; }
+    .undo-form { margin: .2rem 0; }
+    .undo-btn { border: 1px solid #b58; border-radius: 7px; padding: .3rem .7rem; background: #fdeef6; color: #843; }
+    .undo-btn:hover { border-color: #843; box-shadow: 0 0 0 3px #f6d6e6; }
+
+    /* Boss quick-sheets */
+    .summary { text-align: left; border: 1px solid #ccc; border-radius: 8px; padding: .4rem .55rem; background: #fff;
+               font-size: .74rem; color: #444; min-width: 150px; }
+    .summary.active { border-color: #36c; box-shadow: 0 0 0 2px #cfe4ff; background: #f4f7ff; }
+    .summary.eliminated { opacity: .55; border-color: #b00; }
+    .summary .sum-name { font-weight: bold; font-size: .82rem; color: #222; }
+    .summary .sum-dmg { color: #a33; font-weight: bold; }
+    .summary .sum-score { margin-top: .2rem; }
+    .dungeon-area { min-width: 0; }
+
+    /* Dungeon board doubles as the crawl track. It never scrolls on its own:
+       the crawling party's token can be tall, so the board reserves room for it
+       (see JS) and the page scrolls normally instead of an inner frame. */
+    .dungeon-board { position: relative; display: flex; gap: .5rem; padding-bottom: .4rem; overflow: visible; }
+    .encounter.active { border-color: #36c; box-shadow: 0 0 0 3px #cfe4ff; }
+
+    /* Crawl stage: the entering party sits to the LEFT of the dungeon, and each
+       room is marked with the heroes expected to die there. */
+    .crawl-stage { display: flex; gap: .6rem; align-items: flex-start; overflow-x: auto; padding-bottom: .4rem; }
+    .crawl-party { flex: none; display: flex; flex-direction: column; gap: .3rem; align-items: flex-start;
+                   border: 2px solid #2c3e9e; border-radius: 10px; padding: .35rem; background: #eef1ff; }
+    .crawl-party .cp-head { font-size: .68rem; font-weight: bold; color: #2c3e9e; text-transform: uppercase; letter-spacing: .03em; }
+    .death-mark { margin-top: .2rem; font-size: .74rem; font-weight: bold; color: #b00; background: #fdecec;
+                  border-radius: 6px; padding: .1rem .3rem; display: flex; flex-wrap: wrap; gap: .25rem; }
+    .new-slot { width: 128px; min-width: 128px; border: 2px dashed #9a8; border-radius: 10px; display: flex;
+                align-items: center; justify-content: center; text-align: center; color: #687; background: #fbfbf4; font-size: .78rem; }
+    body.placing .place-target { cursor: pointer; outline: 2px dashed #36c; outline-offset: 2px; }
+    .hand-pick.selected { border-color: #36c; box-shadow: 0 0 0 3px #cfe4ff; }
+
+    .gameover { border: 2px solid #b8860b; border-radius: 8px; padding: .6rem .8rem; margin: .6rem 0; background: #fff7e0; }
+    .gameover .standings { font-size: .8rem; color: #555; margin-top: .3rem; }
+    .decision { border: 2px solid #36c; border-radius: 8px; padding: .5rem .7rem; margin: .6rem 0; background: #f4f7ff; font-size: .84rem; }
+
+    .advance-bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center;
+                   pointer-events: none; }
+    .advance-inner { width: 100%; max-width: 920px; background: #fff; border-top: 1px solid #ccc; padding: .6rem .75rem;
+                     box-shadow: 0 -2px 8px rgba(0,0,0,.08); display: flex; justify-content: center; pointer-events: auto; }
+    .advance { font-size: 1.05rem; padding: .6rem 1.4rem; width: 100%; border-radius: 8px;
+               border: 1px solid #2c3e9e; background: #2c3e9e; color: #fff; }
+    .advance-hint { color: #666; font-size: .9rem; align-self: center; }
+
+    /* Top row: heroes (town) on the left, bosses on the right. */
+    .top-row { display: flex; gap: 1rem; align-items: flex-start; }
+    .top-left { flex: 1; min-width: 0; }
+    .top-right { flex: none; }
+
+    /* Compact town: heroes as small two-row chips; parties boxed. They flow
+       along the row and wrap onto a new line only when they run out of space. */
+    .town-row { display: flex; flex-wrap: wrap; gap: .4rem; align-items: flex-start; }
+    .hero-chip { display: inline-flex; flex-direction: column; align-items: flex-start; gap: .15rem;
+                 font: inherit; font-size: .8rem; border: 1px solid #8fa8d8; border-radius: 8px;
+                 padding: .25rem .45rem; background: linear-gradient(#eef3ff, #d9e4ff); color: #223;
+                 cursor: pointer; white-space: nowrap; }
+    .hero-chip:hover { border-color: #36c; box-shadow: 0 0 0 2px #cfe4ff; }
+    .hero-chip .hc-top, .hero-chip .hc-bot { display: inline-flex; align-items: center; gap: .3rem; }
+    .hero-chip .hico { font-size: 1.1rem; line-height: 1; }
+    .hero-chip .hq { font-weight: bold; font-size: .85rem; color: #2c3e9e; }
+    .party-box { display: inline-flex; flex-direction: column; gap: .25rem; border: 2px solid #8a6;
+                 border-radius: 10px; padding: .3rem .35rem; background: #f3f7ec; }
+    .party-box .party-head { font-size: .72rem; font-weight: bold; color: #585; margin: 0 .1rem; }
+    .party-box .party-members { display: flex; flex-wrap: wrap; gap: .35rem; }
+
+    /* Bosses: two per row. */
+    .boss-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+    .boss-grid .summary { min-width: 0; }
+
+    /* Full hero card popover. */
+    .modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; }
+    .modal[hidden] { display: none; }
+    .modal-back { position: absolute; inset: 0; background: rgba(0,0,0,.45); }
+    .modal-body { position: relative; z-index: 1; }
+    .modal-body .card { width: 170px; min-width: 170px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <h1>Dungeon Boss</h1>
+      <form method="post" action="/new" class="newgame">
+        <label class="players-label">Players
+          <select name="players">
+            <% (2..4).each do |n| %>
+              <option value="<%= n %>"<%= n == (game ? game.players.size : 2) ? " selected" : "" %>><%= n %></option>
+            <% end %>
+          </select>
+        </label>
+        <button type="submit">New game</button>
+      </form>
+    </header>
+
+    <% unless game %>
+      <p class="sub">Choose how many players (2–4), then tap <strong>New game</strong>.
+        You are Player 1; the rest are computer opponents.</p>
+    <% else %>
+      <% decision = game.current_decision %>
+      <% human = game.players.find { |p| !game.automated?(p) } || game.players.first %>
+      <p class="sub">Round <%= game.round %> · <%= game.stage %></p>
+
+      <% if game.over? %>
+        <div class="gameover">
+          🏆 <strong><%= game.winner.name %></strong> wins!
+          <div class="standings">
+            <% game.standings.each do |s| %>
+              <div><%= s.player.name %>:
+                <% if s.eliminated %>eliminated (5 wounds)
+                <% else %>score <%= s.score %> (<%= s.player.points %> pts − <%= s.player.wounds %> wounds)<% end %>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+
+      <% if decision %>
+        <div class="decision"><strong><%= decision.prompt %></strong></div>
+      <% end %>
+
+      <%# ---- Town (left) + Bosses (right) on one row ---- %>
+      <div class="top-row">
+        <div class="top-left">
+      <h2>Town</h2>
+      <% if game.town.empty? %>
+        <p class="sub">No heroes in town.</p>
+      <% else %>
+        <div class="town-row">
+          <%# Lone heroes (each its own party) grouped across town by class. %>
+          <% game.town.select(&:lone?).flat_map(&:heroes).group_by(&:id).values.each do |hs| %>
+            <button class="hero-chip" type="button"><%= CardPresenter.hero_chip(hs.first, hs.size) %><template class="hero-full"><div class="card hero"><%= CardPresenter.hero_inner(hs.first) %></div></template></button>
+          <% end %>
+          <%# Multi-hero parties: members grouped by class within the box. %>
+          <% game.town.reject(&:lone?).each do |party| %>
+            <div class="party-box">
+              <div class="party-head"><%= party.display_name %> · 🦁 <%= party.courage %></div>
+              <div class="party-members">
+                <% party.heroes.group_by(&:id).values.each do |hs| %>
+                  <button class="hero-chip" type="button"><%= CardPresenter.hero_chip(hs.first, hs.size) %><template class="hero-full"><div class="card hero"><%= CardPresenter.hero_inner(hs.first) %></div></template></button>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+        </div>
+        <div class="top-right">
+      <h2>Bosses</h2>
+      <div class="boss-grid">
+        <% game.players.each do |player| %>
+          <% dead = game.eliminated?(player) %>
+          <button class="summary<%= dead ? ' eliminated' : '' %>" data-player="<%= player.name %>" type="button">
+            <div class="sum-name"><%= player.dungeon ? DungeonSummary.new(player.dungeon).boss_name : player.name %></div>
+            <div class="sub"><%= game.automated?(player) ? "computer" : "you" %><%= dead ? " · ☠ eliminated" : "" %></div>
+            <% if player.dungeon %>
+              <% summary = DungeonSummary.new(player.dungeon) %>
+              <% total = dungeon_total_damage(player) %>
+              <% base = summary.total_damage %>
+              <div class="sum-dmg">⚔ <%= total %><%= total > base ? " (#{base}+#{total - base})" : "" %></div>
+              <div><%= CardPresenter.bait_summary(summary.all_bait_totals) %></div>
+            <% else %>
+              <div>choosing…</div>
+            <% end %>
+            <div class="sum-score">🪙 <%= player.points %> · 🩸 <%= player.wounds %></div>
+          </button>
+        <% end %>
+      </div>
+        </div>
+      </div>
+
+      <%# ---- Hand: room cards and ability cards share one scrolling row ---- %>
+      <h2>Your hand</h2>
+      <% choosing_first = decision && decision.player == human && decision.kind == :place_first_room %>
+      <% choosing_discard = decision && decision.player == human && decision.kind == :discard_room %>
+      <% choosing_build = decision && decision.player == human && decision.kind == :build_room %>
+      <% precrawl = game.crawling? && game.next_crawl %>
+      <% if human.room_hand.empty? && human.ability_hand.empty? %>
+        <p class="sub">No cards in hand.</p>
+      <% else %>
+        <div class="scroller">
+          <% human.room_hand.each do |card| %>
+            <% upgrade = card.is_a?(Upgrade) %>
+            <% advanced = !upgrade && card.advanced? %>
+            <% kind = upgrade ? "upgrade" : advanced ? "advanced" : "room" %>
+            <% if choosing_discard || (choosing_first && kind == "room") %>
+              <form method="post" action="/decide">
+                <input type="hidden" name="choice" value="<%= card.id %>">
+                <button class="card <%= kind %> card-button" type="submit"><%= CardPresenter.card_inner(card) %></button>
+              </form>
+            <% elsif choosing_build %>
+              <button class="card <%= kind %> hand-pick" type="button" data-room="<%= card.id %>" data-kind="<%= kind %>"<%= advanced ? " data-requires='#{card.bait.to_h.to_json}'" : "" %>><%= CardPresenter.card_inner(card) %></button>
+            <% elsif game.crawling? %>
+              <button class="card <%= kind %> boost-discard" type="button" data-room="<%= card.id %>"><%= CardPresenter.card_inner(card) %></button>
+            <% else %>
+              <div class="card <%= kind %>"><%= CardPresenter.card_inner(card) %></div>
+            <% end %>
+          <% end %>
+          <% human.ability_hand.each do |card| %>
+            <% if precrawl %>
+              <button type="button" class="card ability ability-pick" data-ability="<%= card.id %>" data-targets-room="<%= AbilityEffect.for(card).targets_room? %>"><%= CardPresenter.ability_inner(card) %></button>
+            <% elsif game.quiet? && AbilityEffect.for(card).draw_rooms %>
+              <button type="button" class="card ability ability-pick" data-ability="<%= card.id %>" data-targets-room="false"><%= CardPresenter.ability_inner(card) %></button>
+            <% else %>
+              <div class="card ability"><%= CardPresenter.ability_inner(card) %></div>
+            <% end %>
+          <% end %>
+        </div>
+        <% if choosing_discard %>
+          <p class="sub">Tap a room card to throw it away.</p>
+        <% elsif choosing_build %>
+          <p class="sub">Tap a card, then a slot in your dungeon below. A room is added at the entrance or replaces a room; an upgrade attaches to a room; an advanced room replaces any room sharing one of its bait icons.</p>
+          <% if game.can_undo_discard? %>
+            <form method="post" action="/undo_discard" class="undo-form">
+              <button class="undo-btn" type="submit">↶ Undo discard</button>
+            </form>
+          <% end %>
+        <% elsif precrawl %>
+          <p class="sub">Tap an ability card then a room below to target it (Retreat turns the party back at that room); or tap “Boost” on a room then a hand card.</p>
+        <% elsif game.quiet? %>
+          <p class="sub">You may tap Blueprints to draw room cards, then continue.</p>
+        <% end %>
+      <% end %>
+
+      <%# ---- Dungeon: one at a time; during a crawl, the dungeon being crawled.
+             Pre-crawl ability targeting and boosting happen on these cells. ---- %>
+      <div class="dungeon-area">
+        <% game.players.each do |player| %>
+          <% building_here = decision && decision.kind == :build_room && decision.player == player %>
+          <% crawl_here = precrawl && game.next_crawl.first == player %>
+          <%# A crawl shown on this dungeon: the just-resolved one, else the party about to enter. %>
+          <% outcome = game.last_outcomes.find { |x| x.player == player && x.result } %>
+          <% entering = outcome ? outcome.result.participants : (crawl_here ? game.next_crawl.last.heroes : nil) %>
+          <% deaths_by_room = outcome ? outcome.result.log.select { |s| s[:died] }.group_by { |s| s[:room_index] } : {} %>
+          <div data-player-wrap="<%= player.name %>" style="<%= player == human ? '' : 'display:none' %>">
+            <h3><%= player.name %><%= game.automated?(player) ? " (computer)" : "" %> — dungeon (entrance on the left)<%= crawl_here ? " · ⚔ #{game.next_crawl.last.display_name} incoming" : "" %></h3>
+            <div class="crawl-stage">
+              <% if entering %>
+                <div class="crawl-party">
+                  <div class="cp-head"><%= outcome ? (outcome.retreated ? "↩ Retreated" : "Crawled") : "⚔ Entering" %></div>
+                  <% entering.group_by(&:id).values.each do |hs| %>
+                    <button class="hero-chip" type="button"><%= CardPresenter.hero_chip(hs.first, hs.size) %><template class="hero-full"><div class="card hero"><%= CardPresenter.hero_inner(hs.first) %></div></template></button>
+                  <% end %>
+                </div>
+              <% end %>
+              <div class="dungeon-board" data-player="<%= player.name %>">
+                <% if player.dungeon.nil? %>
+                  <% if decision && decision.player == player && decision.kind == :choose_boss %>
+                    <% decision.options.each do |boss| %>
+                      <form method="post" action="/decide">
+                        <input type="hidden" name="choice" value="<%= boss.id %>">
+                        <button class="card boss card-button" type="submit"><%= CardPresenter.boss_inner(boss) %></button>
+                      </form>
+                    <% end %>
+                  <% else %>
+                    <p class="sub">No boss chosen yet.</p>
+                  <% end %>
+                <% else %>
+                  <% if building_here && !player.dungeon.full? %>
+                    <div class="new-slot place-target" data-target="new">+ add new room here</div>
+                  <% end %>
+                  <% player.dungeon.rooms.each_with_index do |room, i| %>
+                    <% parts = damage_parts(player, room) %>
+                    <% if crawl_here %><% b = game.crawl_mods.bonus(i); parts += [b] if b.positive? %><% end %>
+                    <% boostable = crawl_here && RoomEffect.for(room).boostable? && !game.crawl_mods.boosted?(i) %>
+                    <div class="card <%= room.base_room.advanced? ? 'advanced' : 'room' %> encounter<%= building_here ? ' place-target' : '' %><%= crawl_here ? ' crawl-target' : '' %>" data-index="<%= i %>" data-damage="<%= parts.sum %>" data-target="<%= i %>" data-room-index="<%= i %>" data-bait='<%= room.bait.to_h.to_json %>'>
+                      <%= CardPresenter.room_inner(room, parts: parts) %>
+                      <% if room.base_room.advanced? %><div class="upgrade-badge">★ advanced</div><% end %>
+                      <% if room.upgrade %><div class="upgrade-badge">⬆️ <%= room.upgrade.name %></div><% end %>
+                      <% if boostable && player == human %><button type="button" class="boost-btn" data-room-index="<%= i %>">Boost (discard a card)</button><% end %>
+                      <% if (dh = deaths_by_room[i]) %><div class="death-mark"><% dh.group_by { |s| s[:hero].id }.values.each do |gp| %><span><%= CardPresenter.hero_art(gp.first[:hero]) %><%= gp.size > 1 ? "×#{gp.size}" : "" %>💀</span><% end %></div><% end %>
+                    </div>
+                  <% end %>
+                  <% bi = player.dungeon.rooms.size %>
+                  <% boss_parts = damage_parts(player, player.dungeon.boss) %>
+                  <% if crawl_here %><% b = game.crawl_mods.bonus(bi); boss_parts += [b] if b.positive? %><% end %>
+                  <div class="card boss encounter<%= crawl_here ? ' crawl-target' : '' %>" data-index="<%= bi %>" data-damage="<%= boss_parts.sum %>" data-room-index="<%= bi %>">
+                    <%= CardPresenter.boss_inner(player.dungeon.boss, parts: boss_parts) %>
+                    <% if (dh = deaths_by_room[bi]) %><div class="death-mark"><% dh.group_by { |s| s[:hero].id }.values.each do |gp| %><span><%= CardPresenter.hero_art(gp.first[:hero]) %><%= gp.size > 1 ? "×#{gp.size}" : "" %>💀</span><% end %></div><% end %>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+
+      <%# ---- Full crawl breakdown: exactly how much each room dealt to each hero ---- %>
+      <% unless game.last_outcomes.empty? %>
+        <div class="breakdown">
+          <h2>Crawl breakdown</h2>
+          <% game.last_outcomes.each do |o| %>
+            <% next unless o.result %>
+            <% pname = o.party.display_name.to_s.empty? ? o.result.participants.map(&:name).join(" & ") : o.party.display_name %>
+            <div class="bd-party">
+              <div class="bd-head">⚔ <%= pname %> → <%= o.player.name %>'s dungeon<%= o.retreated ? ' ↩ retreated' : '' %></div>
+              <table class="bd-table">
+                <thead><tr><th>Encounter</th><th>Hero</th><th>Damage</th><th>HP</th></tr></thead>
+                <tbody>
+                  <% o.result.log.each do |s| %>
+                    <% before = s[:health_after] + s[:damage] %>
+                    <tr class="<%= s[:died] ? 'bd-died' : '' %>">
+                      <td><%= s[:encounter].name %></td>
+                      <td><%= s[:hero].name %></td>
+                      <td>−<%= s[:damage] %></td>
+                      <td><%= before %> → <%= [s[:health_after], 0].max %><%= s[:died] ? ' 💀' : '' %></td>
+                    </tr>
+                  <% end %>
+                  <% if o.result.log.empty? %>
+                    <tr><td colspan="4" class="sub"><%= o.retreated ? 'Retreated before any room.' : 'No damage dealt.' %></td></tr>
+                  <% end %>
+                </tbody>
+              </table>
+              <% deaths = o.result.deaths %>
+              <% wounded = !o.retreated && !o.result.survivors.empty? %>
+              <div class="bd-summary">→ <%= o.player.name %> gains
+                <%= deaths %> point<%= deaths == 1 ? '' : 's' %><%= wounded ? ', 1 wound' : '' %>.
+                <%= o.retreated ? 'The party retreated; ' : '' %>Survivors:
+                <%= o.result.survivors.empty? ? 'none' : o.result.survivors.map(&:name).join(', ') %>.</div>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+
+  <% if game %>
+    <%# ---- Bottom advance bar ---- %>
+    <footer class="advance-bar">
+      <div class="advance-inner">
+        <% if choosing_build %>
+          <form method="post" action="/decide"><button type="submit" class="advance">Build nothing</button></form>
+        <% elsif choosing_discard %>
+          <span class="advance-hint">Tap a card to discard</span>
+        <% elsif decision %>
+          <span class="advance-hint">Tap a card to choose</span>
+        <% elsif game.crawling? %>
+          <% crawl_player, crawl_party = game.next_crawl %>
+          <form method="post" action="/crawl"><button type="submit" class="advance">Send <%= crawl_party.display_name %> into <%= crawl_player.name %>'s dungeon</button></form>
+        <% elsif game.quiet? %>
+          <form method="post" action="/continue"><button type="submit" class="advance">Continue (no heroes attacked)</button></form>
+        <% elsif game.over? %>
+          <span class="advance-hint">Game over — tap “New game” to play again.</span>
+        <% elsif game.ready? %>
+          <form method="post" action="/round"><button type="submit" class="advance">Next turn</button></form>
+        <% end %>
+      </div>
+    </footer>
+
+    <%# hidden form used by the two-step build placement %>
+    <form id="place-form" method="post" action="/decide">
+      <input type="hidden" name="choice" id="place-choice">
+      <input type="hidden" name="target" id="place-target">
+    </form>
+    <%# hidden forms for pre-crawl ability play and room boosting %>
+    <form id="ability-form" method="post" action="/play_ability">
+      <input type="hidden" name="choice" id="ability-choice">
+      <input type="hidden" name="target" id="ability-target">
+    </form>
+    <form id="boost-form" method="post" action="/boost">
+      <input type="hidden" name="choice" id="boost-choice">
+      <input type="hidden" name="target" id="boost-target">
+    </form>
+
+    <%# full-card popover for a tapped town hero %>
+    <div id="hero-modal" class="modal" hidden>
+      <div class="modal-back"></div>
+      <div class="modal-body"></div>
+    </div>
+
+    <script>
+      const HUMAN = <%= human.name.to_json %>;
+      const LAST_OWNER = <%= (game.last_outcomes.last && game.last_outcomes.last.result) ? game.last_outcomes.last.player.name.to_json : "null" %>;
+      const NEXT_OWNER = <%= (game.crawling? && game.next_crawl) ? game.next_crawl.first.name.to_json : "null" %>;
+      // Rest on the dungeon just crawled (so its death marks are visible), else
+      // the one about to be crawled, else the human's own.
+      const HOME_VIEW = LAST_OWNER || NEXT_OWNER || HUMAN;
+
+      (function () {
+        /* ---- view toggling: show one dungeon at a time ---- */
+        let viewed = HUMAN;
+        function showDungeon(name) {
+          document.querySelectorAll("[data-player-wrap]").forEach(function (w) {
+            w.style.display = (w.getAttribute("data-player-wrap") === name) ? "" : "none";
+          });
+          document.querySelectorAll(".summary").forEach(function (s) {
+            s.classList.toggle("active", s.getAttribute("data-player") === name);
+          });
+          viewed = name;
+        }
+        document.querySelectorAll(".summary").forEach(function (s) {
+          s.addEventListener("click", function () {
+            const name = s.getAttribute("data-player");
+            if (viewed === name && name !== HOME_VIEW) showDungeon(HOME_VIEW);
+            else showDungeon(name);
+          });
+        });
+        showDungeon(HOME_VIEW);
+
+        /* ---- tap a town hero to see its full card ---- */
+        const heroModal = document.getElementById("hero-modal");
+        if (heroModal) {
+          const heroBody = heroModal.querySelector(".modal-body");
+          document.querySelectorAll(".hero-chip").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+              const tpl = btn.querySelector("template.hero-full");
+              heroBody.innerHTML = tpl ? tpl.innerHTML : "";
+              heroModal.hidden = false;
+            });
+          });
+          heroModal.addEventListener("click", function () { heroModal.hidden = true; });
+        }
+
+        /* ---- two-step build placement ---- */
+        let selected = null, selectedKind = null, selectedRequires = null;
+        function clearSelection() {
+          selected = null;
+          selectedKind = null;
+          selectedRequires = null;
+          document.querySelectorAll(".hand-pick.selected").forEach(function (b) { b.classList.remove("selected"); });
+          document.body.classList.remove("placing");
+        }
+        function baitShares(haveJson, needJson) {
+          const have = JSON.parse(haveJson || "{}");
+          const need = JSON.parse(needJson || "{}");
+          return Object.keys(need).some(function (k) { return (have[k] || 0) > 0; });
+        }
+        document.querySelectorAll(".hand-pick").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            showDungeon(HUMAN);
+            if (selected === btn.dataset.room) { clearSelection(); return; }
+            clearSelection();
+            selected = btn.dataset.room;
+            selectedKind = btn.dataset.kind;
+            selectedRequires = btn.dataset.requires;
+            btn.classList.add("selected");
+            document.body.classList.add("placing");
+          });
+        });
+        document.querySelectorAll(".place-target").forEach(function (t) {
+          t.addEventListener("click", function () {
+            if (!selected) return;
+            // Only a basic room can use the "add new" slot.
+            if (selectedKind !== "room" && t.dataset.target === "new") return;
+            // An advanced room needs a room sharing at least one of its bait icons.
+            if (selectedKind === "advanced" && !baitShares(t.dataset.bait, selectedRequires)) return;
+            document.getElementById("place-choice").value = selected;
+            document.getElementById("place-target").value = t.dataset.target;
+            document.getElementById("place-form").submit();
+          });
+        });
+
+        /* ---- pre-crawl: play ability cards / boost rooms ---- */
+        let ability = null, boostRoom = null;
+        function resetCrawlModes() {
+          ability = null; boostRoom = null;
+          document.querySelectorAll(".ability-pick.selected, .boost-btn.selected").forEach(function (e) { e.classList.remove("selected"); });
+          document.body.classList.remove("ability-mode", "boost-mode");
+        }
+        function submitForm(id, choice, target) {
+          document.getElementById(id + "-choice").value = choice;
+          document.getElementById(id + "-target").value = target;
+          document.getElementById(id + "-form").submit();
+        }
+        document.querySelectorAll(".ability-pick").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            // Cards that don't target a room (Retreat, Blueprints) play at once.
+            if (btn.dataset.targetsRoom !== "true") { submitForm("ability", btn.dataset.ability, ""); return; }
+            const was = ability === btn.dataset.ability;
+            resetCrawlModes();
+            if (was) return;
+            ability = btn.dataset.ability;
+            btn.classList.add("selected");
+            document.body.classList.add("ability-mode");
+          });
+        });
+        document.querySelectorAll(".crawl-target").forEach(function (t) {
+          t.addEventListener("click", function () {
+            if (ability) submitForm("ability", ability, t.dataset.roomIndex);
+          });
+        });
+        document.querySelectorAll(".boost-btn").forEach(function (b) {
+          b.addEventListener("click", function (e) {
+            e.stopPropagation();
+            const was = boostRoom === b.dataset.roomIndex;
+            resetCrawlModes();
+            if (was) return;
+            boostRoom = b.dataset.roomIndex;
+            b.classList.add("selected");
+            document.body.classList.add("boost-mode");
+          });
+        });
+        document.querySelectorAll(".boost-discard").forEach(function (card) {
+          card.addEventListener("click", function () {
+            if (boostRoom !== null) submitForm("boost", card.dataset.room, boostRoom);
+          });
+        });
+      })();
+    </script>
+  <% end %>
+</body>
+</html>

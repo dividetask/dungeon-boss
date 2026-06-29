@@ -1,0 +1,9 @@
+<resources>
+    <!-- A bare, Compose-friendly theme. The UI styles itself with Material 3
+         inside the composition; this XML theme only removes the action bar and
+         sets a light background to match the web app. -->
+    <style name="Theme.DungeonBoss" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:statusBarColor">#2C3E9E</item>
+    </style>
+</resources>

@@ -1,0 +1,330 @@
+rooms:
+  - id: room_gladiator
+    name: Gladiator
+    type: Basic Monster
+    damage: 4
+    bait:
+      glory: 1
+    effect:
+      grows_on_death: true
+    description: "Damage increases by 1 each time a hero dies in this room"
+    ability_text: ""
+    copies: 16
+
+  - id: succubus
+    name: Succubus
+    type: Creature
+    damage: 4
+    bait:
+      power: 1
+      glory: 1
+    effect:
+      grows_on_death: true
+    description: "Damage increases by 1 each time a hero dies in this room"
+    copies: 16
+
+  - id: plague_zombie
+    name: Zombies
+    type: Creature
+    damage: 4
+    bait:
+      undead: 1
+    effect:
+      grows_on_death: true
+    description: "Damage increases by 1 each time a hero dies in this room"
+    copies: 16
+
+  - id: room_poisoned_spikes
+    name: Poison Spike
+    type: Basic Trap
+    damage: 2
+    bait:
+      riches: 1
+    effect:
+      next_room_damage: 8
+    description: "Poisoned spikes are hidden under your feet; a hero hit here takes 8 more damage in the next room"
+    ability_text: ""
+    copies: 16
+
+  - id: room_stone_ball
+    name: Stone Ball
+    type: Basic Trap
+    damage: 5
+    bait:
+      glory: 1
+    description: "A giant stone ball rolls down towards you"
+    ability_text: ""
+    copies: 16
+
+  - id: room_suspicious_treasure
+    name: Treasure?
+    type: Basic Monster
+    damage: 5
+    bait:
+      riches: 1
+    description: "A mimic!"
+    ability_text: ""
+    copies: 16
+
+  - id: room_will_o_wisps
+    name: Will o Wisps
+    type: Basic Monster
+    damage: 5
+    bait:
+      power: 1
+    description: "Will o wisps prowl the hallway"
+    ability_text: ""
+    copies: 16
+
+  - id: room_ghoul_pit
+    name: Ghoul Pit
+    type: Basic Monster
+    damage: 5
+    bait:
+      undead: 1
+    description: "Ghouls claw their way up out of the earth"
+    ability_text: ""
+    copies: 16
+
+  - id: room_goblins
+    name: Goblins
+    type: Basic Monster
+    damage: 3
+    bait:
+      glory: 1
+    tags: [goblin]
+    description: "Goblins ambush you as you wander into the room"
+    ability_text: ""
+    copies: 24
+
+  - id: room_zombies
+    name: Skeletons
+    type: Basic Monster
+    damage: 3
+    bait:
+      undead: 1
+    description: "Skeletons"
+    ability_text: ""
+    copies: 24
+
+  - id: room_mana_storm
+    name: Mana Storm
+    type: Basic Trap
+    damage: 3
+    bait:
+      power: 1
+    description: "Wild magic crackles through the air"
+    ability_text: ""
+    copies: 24
+
+  - id: room_golden_idol
+    name: Golden Idol
+    type: Basic Trap
+    damage: 3
+    bait:
+      riches: 1
+    description: "Lifting the idol triggers a hail of darts"
+    ability_text: ""
+    copies: 24
+
+  - id: room_soul_siphon
+    name: Soul Siphon
+    type: Basic Monster
+    damage: 4
+    bait:
+      power: 1
+    effect:
+      draw_on_death: ability
+    description: "Whenever a hero dies in this room, draw an ability card"
+    ability_text: ""
+    copies: 24
+
+  - id: room_unhallowed_ground
+    name: Ghosts
+    type: Basic Monster
+    damage: 4
+    bait:
+      undead: 1
+    effect:
+      draw_on_death: room
+    description: "Whenever a hero dies in this room, draw a room card"
+    ability_text: ""
+    copies: 24
+
+  - id: room_champions_arena
+    name: Champion
+    type: Basic Monster
+    damage: 4
+    bait:
+      glory: 1
+    effect:
+      unreducible: true
+    description: "A rival champion challenges you to single combat; this damage cannot be reduced"
+    ability_text: ""
+    copies: 16
+
+  - id: room_pit_trap
+    name: Pit Trap
+    type: Basic Trap
+    damage: 4
+    bait:
+      riches: 1
+    effect:
+      draw_on_death: room
+    description: "Whenever a hero dies in this room, draw a room card"
+    ability_text: ""
+    copies: 16
+
+
+upgrades:
+  - id: upgrade_glory_banner
+    name: Glory Banner
+    bonus_damage: 0
+    bait:
+      glory: 1
+    description: "Adds a glory bait icon to a room"
+    copies: 15
+
+  - id: upgrade_treasure_pile
+    name: Treasure Pile
+    bonus_damage: 0
+    bait:
+      riches: 1
+    description: "Adds a riches bait icon to a room"
+    copies: 15
+
+  - id: upgrade_cursed_idol
+    name: Cursed Idol
+    bonus_damage: 2
+    bait:
+      undead: 1
+    description: "Adds an undead bait icon and +2 damage to a room"
+    copies: 15
+
+  - id: upgrade_arcane_sigil
+    name: Arcane Sigil
+    bonus_damage: 2
+    bait:
+      power: 1
+    description: "Adds a power bait icon and +2 damage to a room"
+    copies: 15
+
+  - id: upgrade_reinforced_walls
+    name: Reinforced Walls
+    bonus_damage: 3
+    bait: {}
+    description: "Increases a room's damage by 3"
+    copies: 15
+
+# Advanced rooms share the build deck but may only be played by REPLACING an
+# existing room whose bait icons cover the advanced room's own bait. Their
+# `effect` drives special behaviour during the crawl. About as common as
+# upgrades (4 basic rooms : 1 upgrade : 1 advanced room).
+
+advanced_rooms:
+  - id: adv_poison_gas
+    name: Poison Gas
+    type: Trap
+    damage: 2
+    bait:
+      riches: 1
+    effect:
+      poisons_on_hit: true
+    description: "Deals 2 damage; a hero hit here takes 1 more in every later room"
+    copies: 11
+
+  - id: adv_antimagic_room
+    name: Antimagic Room
+    type: Trap
+    damage: 0
+    bait:
+      power: 2
+    effect:
+      party_hits:
+        - match: { preferred_bait: power }
+          amount: 4
+    description: "All Mages in the party take 4 damage that cannot be reduced"
+    copies: 11
+
+  - id: adv_zealots
+    name: Zealots
+    type: Creature
+    damage: 4
+    bait:
+      undead: 2
+    effect:
+      party_hits:
+        - match: { preferred_bait: undead }
+          amount: 4
+    description: "All Clerics in the party take 4 damage that cannot be reduced"
+    copies: 11
+
+  - id: adv_trap_makers_workshop
+    name: Trap Makers Workshop
+    type: Creature
+    damage: 2
+    bait:
+      riches: 2
+    effect:
+      room_auras:
+        - match: { type: trap }
+          flat: 2
+    description: "All other trap rooms deal +2 damage"
+    copies: 11
+
+  - id: adv_beast_tamer
+    name: Beast Tamer
+    type: Creature
+    damage: 2
+    bait:
+      glory: 2
+    effect:
+      room_auras:
+        - match: { type: creature }
+          flat: 2
+    description: "All other creature rooms deal +2 damage"
+    copies: 11
+
+  - id: adv_collapsing_tunnel
+    name: Collapsing Tunnel
+    type: Trap
+    damage: 2
+    bait:
+      riches: 1
+    effect:
+      discard_boost: { add_damage: 4 }
+    description: "Discard a room card to increase this room's damage by 4"
+    copies: 5
+
+  - id: adv_golem
+    name: Golem
+    type: Trap
+    damage: 2
+    bait:
+      power: 1
+    effect:
+      discard_boost: { add_damage: 4 }
+    description: "Discard a room card to increase this room's damage by 4"
+    copies: 5
+
+  - id: adv_necrotic_fog
+    name: Necrotic Fog
+    type: Trap
+    damage: 2
+    bait:
+      undead: 1
+    effect:
+      discard_boost: { add_damage: 4 }
+    description: "Discard a room card to increase this room's damage by 4"
+    copies: 5
+
+  - id: adv_troll
+    name: Troll
+    type: Trap
+    damage: 6
+    bait:
+      glory: 1
+    effect:
+      discard_boost: { unreducible: true }
+    description: "Discard a room card to make this room's damage unreducible"
+    copies: 5

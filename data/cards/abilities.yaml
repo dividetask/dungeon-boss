@@ -1,0 +1,39 @@
+# Dungeon Boss card definitions. Loaded with the other files in this
+# directory by every client. See docs/cards.md for the schema.
+# Bait types are exactly: glory, riches, undead, power.
+
+ability_cards:
+  - id: ability_extra_damage
+    name: Reinforcements
+    effect:
+      add_damage: 4
+    text: "Target room deals 4 additional damage"
+    copies: 8
+
+  - id: ability_full_damage
+    name: Expose Weakness
+    effect:
+      unreducible: true
+    text: "Target room deals full damage (no damage reduction)"
+    copies: 8
+
+  - id: ability_no_damage
+    name: Sabotage
+    effect:
+      zero: true
+    text: "Target room deals no damage"
+    copies: 8
+
+  - id: ability_return_to_town
+    name: Retreat
+    effect:
+      retreat: true
+    text: "Target a room: the party turns back after reaching there"
+    copies: 8
+
+  - id: ability_draw_rooms
+    name: Blueprints
+    effect:
+      draw_rooms: 2
+    text: "Draw 2 room cards"
+    copies: 8

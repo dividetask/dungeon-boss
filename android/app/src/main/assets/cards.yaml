@@ -1,0 +1,505 @@
+# Dungeon Boss — canonical card definitions for the Android client.
+#
+# This is the Android copy of the cards. The canonical source is the split set
+# of files under data/cards/ (bosses.yaml, rooms.yaml, heroes.yaml,
+# abilities.yaml); this file merges their top-level keys into one document that
+# the Android CardLibrary loads from assets. Keep it in sync with data/cards/.
+# See docs/cards.md for the schema. Bait types: glory, riches, undead, power.
+
+# ===== bosses (from data/cards/bosses.yaml) =====
+bosses:
+  - id: boss_lich
+    name: Lich
+    damage: 4
+    bait:
+      undead: 1
+      power: 1
+    effect:
+      room_bonuses:
+        - match: { bait: power, type: trap }
+          per_point: 1
+    ability_text: "Arcane trap rooms deal +1 damage per point."
+
+  - id: boss_oni
+    name: Oni
+    damage: 8
+    bait:
+      glory: 1
+      power: 1
+    effect:
+      room_bonuses:
+        - match: { tag: goblin }
+          flat: 4
+    tags: [goblin]
+    ability_text: "All Goblin deal +4 damage."
+
+  - id: boss_vampire
+    name: Vampire
+    damage: 4
+    bait:
+      undead: 1
+      riches: 1
+    effect:
+      self_damage_per_point: 2
+    ability_text: "Deals an additional 2 damage per point, rather than 1."
+
+  - id: boss_medusa
+    name: Medusa
+    damage: 8
+    bait:
+      glory: 1
+    ability_text: ""
+
+  - id: boss_goblin_chieftain
+    name: Goblin Chieftain
+    damage: 4
+    bait:
+      glory: 1
+      riches: 1
+    effect:
+      room_bonuses:
+        - match: { tag: goblin }
+          per_point: 1
+    tags: [goblin]
+    ability_text: "Goblin deal +1 damage per point."
+
+  - id: boss_malevolent_spirit
+    name: Malevolent Spirit
+    damage: 2
+    bait:
+      undead: 1
+      power: 1
+      glory: 1
+    effect:
+      self_damage_per_point: 3
+    ability_text: "Deals an additional 3 damage per point, rather than 1."
+
+  - id: boss_kobold_chieftain
+    name: Kobold Chieftain
+    damage: 5
+    bait:
+      riches: 1
+      glory: 1
+    effect:
+      room_bonuses:
+        - match: { type: trap }
+          flat: 2
+    ability_text: "All trap rooms in this dungeon deal an additional 2 damage."
+
+  - id: boss_necromancer
+    name: Necromancer
+    damage: 4
+    bait:
+      undead: 1
+      power: 1
+    effect:
+      room_bonuses:
+        - match: { type: creature, bait: undead }
+          flat: 2
+    ability_text: "All undead creatures in this dungeon deal an additional 2 damage."
+
+
+# ===== rooms / upgrades / advanced_rooms (from data/cards/rooms.yaml) =====
+rooms:
+  - id: room_gladiator
+    name: Gladiator
+    type: Basic Monster
+    damage: 4
+    bait:
+      glory: 1
+    effect:
+      grows_on_death: true
+    description: "Damage increases by 1 each time a hero dies in this room"
+    ability_text: ""
+    copies: 16
+
+  - id: succubus
+    name: Succubus
+    type: Creature
+    damage: 4
+    bait:
+      power: 1
+      glory: 1
+    effect:
+      grows_on_death: true
+    description: "Damage increases by 1 each time a hero dies in this room"
+    copies: 16
+
+  - id: plague_zombie
+    name: Plague Zombie
+    type: Creature
+    damage: 4
+    bait:
+      undead: 1
+    effect:
+      grows_on_death: true
+    description: "Damage increases by 1 each time a hero dies in this room"
+    copies: 16
+
+  - id: room_poisoned_spikes
+    name: Poisoned Spikes
+    type: Basic Trap
+    damage: 2
+    bait:
+      riches: 1
+    effect:
+      next_room_damage: 8
+    description: "Poisoned spikes are hidden under your feet; a hero hit here takes 8 more damage in the next room"
+    ability_text: ""
+    copies: 16
+
+  - id: room_stone_ball
+    name: Stone Ball
+    type: Basic Trap
+    damage: 5
+    bait:
+      glory: 1
+    description: "A giant stone ball rolls down towards you"
+    ability_text: ""
+    copies: 16
+
+  - id: room_suspicious_treasure
+    name: Suspicious Treasure
+    type: Basic Monster
+    damage: 5
+    bait:
+      riches: 1
+    description: "A mimic!"
+    ability_text: ""
+    copies: 16
+
+  - id: room_will_o_wisps
+    name: Will o Wisps
+    type: Basic Monster
+    damage: 5
+    bait:
+      power: 1
+    description: "Will o wisps prowl the hallway"
+    ability_text: ""
+    copies: 16
+
+  - id: room_ghoul_pit
+    name: Ghoul Pit
+    type: Basic Monster
+    damage: 5
+    bait:
+      undead: 1
+    description: "Ghouls claw their way up out of the earth"
+    ability_text: ""
+    copies: 16
+
+  - id: room_goblins
+    name: Goblins
+    type: Basic Monster
+    damage: 3
+    bait:
+      glory: 1
+    tags: [goblin]
+    description: "Goblins ambush you as you wander into the room"
+    ability_text: ""
+    copies: 24
+
+  - id: room_zombies
+    name: Zombies
+    type: Basic Monster
+    damage: 3
+    bait:
+      undead: 1
+    description: "Zombies"
+    ability_text: ""
+    copies: 24
+
+  - id: room_mana_storm
+    name: Mana Storm
+    type: Basic Trap
+    damage: 3
+    bait:
+      power: 1
+    description: "Wild magic crackles through the air"
+    ability_text: ""
+    copies: 24
+
+  - id: room_golden_idol
+    name: Golden Idol
+    type: Basic Trap
+    damage: 3
+    bait:
+      riches: 1
+    description: "Lifting the idol triggers a hail of darts"
+    ability_text: ""
+    copies: 24
+
+  - id: room_soul_siphon
+    name: Soul Siphon
+    type: Basic Monster
+    damage: 4
+    bait:
+      power: 1
+    effect:
+      draw_on_death: ability
+    description: "Whenever a hero dies in this room, draw an ability card"
+    ability_text: ""
+    copies: 24
+
+  - id: room_unhallowed_ground
+    name: Unhallowed Ground
+    type: Basic Monster
+    damage: 4
+    bait:
+      undead: 1
+    effect:
+      draw_on_death: room
+    description: "Whenever a hero dies in this room, draw a room card"
+    ability_text: ""
+    copies: 24
+
+  - id: room_champions_arena
+    name: Champion's Arena
+    type: Basic Monster
+    damage: 4
+    bait:
+      glory: 1
+    effect:
+      unreducible: true
+    description: "A rival champion challenges you to single combat; this damage cannot be reduced"
+    ability_text: ""
+    copies: 16
+
+  - id: room_pit_trap
+    name: Pit Trap
+    type: Basic Trap
+    damage: 4
+    bait:
+      riches: 1
+    effect:
+      draw_on_death: room
+    description: "Whenever a hero dies in this room, draw a room card"
+    ability_text: ""
+    copies: 16
+
+
+upgrades:
+  - id: upgrade_glory_banner
+    name: Glory Banner
+    bonus_damage: 0
+    bait:
+      glory: 1
+    description: "Adds a glory bait icon to a room"
+    copies: 15
+
+  - id: upgrade_treasure_pile
+    name: Treasure Pile
+    bonus_damage: 0
+    bait:
+      riches: 1
+    description: "Adds a riches bait icon to a room"
+    copies: 15
+
+  - id: upgrade_cursed_idol
+    name: Cursed Idol
+    bonus_damage: 2
+    bait:
+      undead: 1
+    description: "Adds an undead bait icon and +2 damage to a room"
+    copies: 15
+
+  - id: upgrade_arcane_sigil
+    name: Arcane Sigil
+    bonus_damage: 2
+    bait:
+      power: 1
+    description: "Adds a power bait icon and +2 damage to a room"
+    copies: 15
+
+  - id: upgrade_reinforced_walls
+    name: Reinforced Walls
+    bonus_damage: 3
+    bait: {}
+    description: "Increases a room's damage by 3"
+    copies: 15
+
+# Advanced rooms share the build deck but may only be played by REPLACING an
+# existing room whose bait icons cover the advanced room's own bait. Their
+# `effect` drives special behaviour during the crawl. About as common as
+# upgrades (4 basic rooms : 1 upgrade : 1 advanced room).
+
+advanced_rooms:
+  - id: adv_poison_gas
+    name: Poison Gas
+    type: Trap
+    damage: 2
+    bait:
+      riches: 1
+    effect:
+      damages_all: true
+      poisons_on_hit: true
+    description: "Deals 2 damage to every hero (reduced as usual); each damaged hero takes 1 more in every later room"
+    copies: 11
+
+  - id: adv_antimagic_room
+    name: Antimagic Room
+    type: Trap
+    damage: 0
+    bait:
+      power: 2
+    effect:
+      party_hits:
+        - match: { preferred_bait: power }
+          amount: 4
+    description: "All Mages in the party take 4 damage that cannot be reduced"
+    copies: 11
+
+  - id: adv_zealots
+    name: Zealots
+    type: Creature
+    damage: 4
+    bait:
+      undead: 2
+    effect:
+      party_hits:
+        - match: { preferred_bait: undead }
+          amount: 4
+    description: "All Clerics in the party take 4 damage that cannot be reduced"
+    copies: 11
+
+  - id: adv_trap_makers_workshop
+    name: Trap Makers Workshop
+    type: Creature
+    damage: 2
+    bait:
+      riches: 2
+    effect:
+      room_auras:
+        - match: { type: trap }
+          flat: 2
+    description: "All other trap rooms deal +2 damage"
+    copies: 11
+
+  - id: adv_beast_tamer
+    name: Beast Tamer
+    type: Creature
+    damage: 2
+    bait:
+      glory: 2
+    effect:
+      room_auras:
+        - match: { type: creature }
+          flat: 2
+    description: "All other creature rooms deal +2 damage"
+    copies: 11
+
+  - id: adv_collapsing_tunnel
+    name: Collapsing Tunnel
+    type: Trap
+    damage: 2
+    bait:
+      riches: 1
+    effect:
+      discard_boost: { add_damage: 4 }
+    description: "Discard a room card to increase this room's damage by 4"
+    copies: 5
+
+  - id: adv_golem
+    name: Golem
+    type: Trap
+    damage: 2
+    bait:
+      power: 1
+    effect:
+      discard_boost: { add_damage: 4 }
+    description: "Discard a room card to increase this room's damage by 4"
+    copies: 5
+
+  - id: adv_necrotic_fog
+    name: Necrotic Fog
+    type: Trap
+    damage: 2
+    bait:
+      undead: 1
+    effect:
+      discard_boost: { add_damage: 4 }
+    description: "Discard a room card to increase this room's damage by 4"
+    copies: 5
+
+  - id: adv_troll
+    name: Troll
+    type: Trap
+    damage: 6
+    bait:
+      glory: 1
+    effect:
+      discard_boost: { unreducible: true }
+    description: "Discard a room card to make this room's damage unreducible"
+    copies: 5
+
+# ===== heroes (from data/cards/heroes.yaml) =====
+heroes:
+  - id: hero_cleric
+    name: Cleric
+    health: 5
+    preferred_bait: undead
+    courage: 2
+    ability_text: "Undead deal 4 less damage to party"
+    copies: 12
+
+  - id: hero_barbarian
+    name: Barbarian
+    health: 8
+    preferred_bait: glory
+    courage: 2
+    ability_text: "All damage taken is reduced by half, rounded up."
+    copies: 12
+
+  - id: hero_rogue
+    name: Rogue
+    health: 6
+    preferred_bait: riches
+    courage: 1
+    ability_text: "Traps deal 2 less damage to the party."
+    copies: 12
+
+  - id: hero_mage
+    name: Mage
+    health: 4
+    preferred_bait: power
+    courage: 1
+    ability_text: "Arcane rooms deal 4 less damage to the party."
+    copies: 12
+
+# ===== ability_cards (from data/cards/abilities.yaml) =====
+
+ability_cards:
+  - id: ability_extra_damage
+    name: Reinforcements
+    effect:
+      add_damage: 4
+    text: "Target room deals 4 additional damage"
+    copies: 8
+
+  - id: ability_full_damage
+    name: Expose Weakness
+    effect:
+      unreducible: true
+    text: "Target room deals full damage (no damage reduction)"
+    copies: 8
+
+  - id: ability_no_damage
+    name: Sabotage
+    effect:
+      zero: true
+    text: "Target room deals no damage"
+    copies: 8
+
+  - id: ability_return_to_town
+    name: Retreat
+    effect:
+      retreat: true
+    text: "Target a room: the party turns back after reaching there"
+    copies: 8
+
+  - id: ability_draw_rooms
+    name: Blueprints
+    effect:
+      draw_rooms: 2
+    text: "Draw 2 room cards"
+    copies: 8

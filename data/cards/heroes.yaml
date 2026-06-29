@@ -1,0 +1,32 @@
+heroes:
+  - id: hero_cleric
+    name: Cleric
+    health: 5
+    preferred_bait: undead
+    courage: 2
+    ability_text: "Undead deal 4 less damage to party"
+    copies: 12
+
+  - id: hero_barbarian
+    name: Barbarian
+    health: 8
+    preferred_bait: glory
+    courage: 2
+    ability_text: "All damage taken is reduced by half, rounded up."
+    copies: 12
+
+  - id: hero_rogue
+    name: Rogue
+    health: 6
+    preferred_bait: riches
+    courage: 1
+    ability_text: "Traps deal 2 less damage to the party."
+    copies: 12
+
+  - id: hero_mage
+    name: Mage
+    health: 4
+    preferred_bait: power
+    courage: 1
+    ability_text: "Arcane rooms deal 4 less damage to the party."
+    copies: 12

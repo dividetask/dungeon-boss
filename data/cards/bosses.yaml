@@ -1,0 +1,91 @@
+bosses:
+  - id: boss_lich
+    name: Lich
+    damage: 4
+    bait:
+      undead: 1
+      power: 1
+    effect:
+      room_bonuses:
+        - match: { bait: power, type: trap }
+          per_point: 1
+    ability_text: "Arcane trap rooms deal +1 damage per point."
+
+  - id: boss_oni
+    name: Oni
+    damage: 8
+    bait:
+      glory: 1
+      power: 1
+    effect:
+      room_bonuses:
+        - match: { tag: goblin }
+          flat: 4
+    tags: [goblin]
+    ability_text: "All Goblin deal +4 damage."
+
+  - id: boss_vampire
+    name: Vampire
+    damage: 4
+    bait:
+      undead: 1
+      riches: 1
+    effect:
+      self_damage_per_point: 2
+    ability_text: "Deals an additional 2 damage per point, rather than 1."
+
+  - id: boss_medusa
+    name: Medusa
+    damage: 8
+    bait:
+      glory: 1
+    ability_text: ""
+
+  - id: boss_goblin_chieftain
+    name: Goblin Chieftain
+    damage: 4
+    bait:
+      glory: 1
+      riches: 1
+    effect:
+      room_bonuses:
+        - match: { tag: goblin }
+          per_point: 1
+    tags: [goblin]
+    ability_text: "Goblin deal +1 damage per point."
+
+  - id: boss_malevolent_spirit
+    name: Malevolent Spirit
+    damage: 2
+    bait:
+      undead: 1
+      power: 1
+      glory: 1
+    effect:
+      self_damage_per_point: 3
+    ability_text: "Deals an additional 3 damage per point, rather than 1."
+
+  - id: boss_kobold_chieftain
+    name: Kobold Chieftain
+    damage: 5
+    bait:
+      riches: 1
+      glory: 1
+    effect:
+      room_bonuses:
+        - match: { type: trap }
+          flat: 2
+    ability_text: "All trap rooms in this dungeon deal an additional 2 damage."
+
+  - id: boss_necromancer
+    name: Necromancer
+    damage: 4
+    bait:
+      undead: 1
+      power: 1
+    effect:
+      room_bonuses:
+        - match: { type: creature, bait: undead }
+          flat: 2
+    ability_text: "All undead creatures in this dungeon deal an additional 2 damage."
+
