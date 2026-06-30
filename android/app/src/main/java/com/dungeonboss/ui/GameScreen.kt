@@ -73,10 +73,11 @@ import com.dungeonboss.model.Upgrade
 import kotlinx.coroutines.delay
 
 /** Bump this every UI change so the on-screen tag confirms which build is running. */
-const val UI_BUILD = "46 (tutorial: drop step counter; message on the control line)"
+const val UI_BUILD = "47 (tutorial rebuilt on the real game board components)"
 
 /** What the human has tapped in hand while building, awaiting a dungeon slot. */
-private data class Selection(val cardId: String, val isUpgrade: Boolean)
+// internal (not private) so the reusable internal GameBody can name it.
+internal data class Selection(val cardId: String, val isUpgrade: Boolean)
 
 @Composable
 fun GameScreen(vm: GameViewModel = viewModel()) {
@@ -369,7 +370,7 @@ private fun TopBar(
 }
 
 @Composable
-private fun GameBody(
+internal fun GameBody(
     tick: Int,
     game: Game,
     humanName: String,
@@ -389,7 +390,11 @@ private fun GameBody(
     onNewGame: () -> Unit,
     activeIndex: Int?,
     heroHp: Map<Int, Int>,
-    deadSet: List<Int>
+    deadSet: List<Int>,
+    // Tutorial-only highlight hooks; the live game leaves these off.
+    baitHighlight: Set<Bait> = emptySet(),
+    baitGlow: Float = 1f,
+    highlightHeroId: String? = null
 ) {
     val human = game.players.first { it.name == humanName }
     val crawl = game.nextCrawl()
@@ -417,7 +422,7 @@ private fun GameBody(
         verticalAlignment = Alignment.Top
     ) {
         Box(Modifier.weight(1f)) {
-            key(tick) { TownSection(game, onInspect = onShowDetail) }
+            key(tick) { TownSection(game, onInspect = onShowDetail, highlightHeroId = highlightHeroId) }
         }
         Box(Modifier.weight(2f)) {
             key(tick) {
@@ -538,7 +543,9 @@ private fun GameBody(
             onShowDetail = onShowDetail,
             activeIndex = if (isCrawledHere) activeIndex else null,
             incoming = incoming,
-            prediction = prediction
+            prediction = prediction,
+            baitHighlight = baitHighlight,
+            baitGlow = baitGlow
         )
     }
 

@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +12,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,60 +35,46 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dungeonboss.data.CardLibrary
+import com.dungeonboss.game.Decision
+import com.dungeonboss.game.DecisionKind
+import com.dungeonboss.game.Dungeon
+import com.dungeonboss.game.Game
+import com.dungeonboss.game.Party
+import com.dungeonboss.game.PartyCrawlResolver
 import com.dungeonboss.model.AbilityCard
 import com.dungeonboss.model.Bait
 import com.dungeonboss.model.Boss
-import com.dungeonboss.model.BuildCard
 import com.dungeonboss.model.Hero
-import com.dungeonboss.model.PlacedRoom
+import com.dungeonboss.model.Room
 import kotlinx.coroutines.delay
 
 /**
- * The interactive-free tutorial: a sequence of narrated, static screens that
- * teach the rules. Each step shows a frozen board (built from real card data so
- * it looks exactly like a game) plus a narration panel with a Continue button.
- * The board cannot be touched — only Back / Continue / Exit move the flow. When
- * the last step is finished the player is returned to the Load screen via
- * [onExit]. See docs/screens.md ("Tutorial").
+ * The non-interactive tutorial. Each step renders a real [Game] snapshot through
+ * the same composables the live game uses ([GameBody] / [DungeonBoard] / the
+ * [PlayerStatsStrip]), so every screen looks identical to the actual game — only
+ * the narration line and the Continue button are tutorial-specific. The board
+ * cannot be touched; Back / Continue / Exit drive the flow. Finishing or exiting
+ * returns to the screen underneath (the Load screen when launched there).
  */
 
-/** What, if anything, animates on a step's board to draw the eye. */
-private enum class Highlight { NONE, FLASH_ALL_BAIT, CYCLE_HERO_BAIT, CYCLE_HERO_TOTALS }
+/** What, if anything, animates on a step to draw the eye. */
+private enum class Highlight { NONE, FLASH_ALL_BAIT, CYCLE }
 
-/** A waiting hero or party shown in town. A lone hero is a list of one. */
-private class TownEntry(val heroes: List<Hero>, val timid: Boolean = false)
-
-/** A dungeon snapshot: rooms (entrance on the left) behind a boss. */
-private class DungeonView(
-    val ownerLabel: String,
-    val rooms: List<PlacedRoom>,
-    val boss: Boss,
-    val points: Int = 0
-)
-
-/** A single hero chip shown crawling under a dungeon. */
-private class CrawlChip(val name: String, val hp: Int, val maxHp: Int, val dead: Boolean)
-
-/** One row in the top-right bait-totals panel. */
-private class BaitTotalsRow(val label: String, val totals: Map<Bait, Int>)
-
-/** Everything a step might display; empty regions are simply omitted. */
-private class TutorialBoard(
-    val caption: String? = null,
-    val baitTotals: List<BaitTotalsRow> = emptyList(),
-    val town: List<TownEntry> = emptyList(),
-    val bossChoice: List<Boss> = emptyList(),
-    val hand: List<BuildCard> = emptyList(),
-    val abilities: List<AbilityCard> = emptyList(),
-    val dungeon: DungeonView? = null,
-    val crawl: List<CrawlChip> = emptyList()
-)
+/** A party about to crawl a dungeon, with its (dry-run) predicted outcome. */
+private class CrawlView(val party: Party, val prediction: PartyCrawlResolver.Result)
 
 private class TutorialStep(
-    val narration: String,
-    val board: TutorialBoard,
-    val highlight: Highlight = Highlight.NONE
+    val text: String,
+    val game: Game,
+    val viewed: String = HUMAN,
+    val decision: Decision? = null,
+    val crawl: CrawlView? = null,
+    val highlight: Highlight = Highlight.NONE,
+    /** Heroes the spotlight cycles through (for [Highlight.CYCLE]). */
+    val cycleHeroes: List<Hero> = emptyList()
 )
+
+private const val HUMAN = "Player 1"
 
 @Composable
 fun TutorialScreen(onExit: () -> Unit) {
@@ -103,7 +87,7 @@ fun TutorialScreen(onExit: () -> Unit) {
     var index by remember { mutableStateOf(0) }
     val step = steps[index]
 
-    // A pulsing opacity (0..1) that drives every bait glow on the board.
+    // A pulsing opacity (0..1) driving every bait glow on the board.
     var glow by remember { mutableStateOf(1f) }
     LaunchedEffect(Unit) {
         val frames = listOf(0.2f, 0.4f, 0.65f, 0.9f, 1f, 0.9f, 0.65f, 0.4f)
@@ -115,34 +99,33 @@ fun TutorialScreen(onExit: () -> Unit) {
         }
     }
 
-    // For the cycling steps, which town hero is currently spotlighted.
-    val cycling = step.highlight == Highlight.CYCLE_HERO_BAIT || step.highlight == Highlight.CYCLE_HERO_TOTALS
-    val cycleCount = step.board.town.size.coerceAtLeast(1)
+    // The spotlight cycles through a step's heroes (steps 4–5).
+    val cycling = step.highlight == Highlight.CYCLE
+    val cycleCount = step.cycleHeroes.size.coerceAtLeast(1)
     var cycle by remember(index) { mutableStateOf(0) }
     LaunchedEffect(index, cycleCount) {
         if (cycling) {
             while (true) {
-                delay(1600)
+                delay(1500)
                 cycle = (cycle + 1) % cycleCount
             }
         }
     }
 
-    val activeHero = if (cycling) step.board.town.getOrNull(cycle)?.heroes?.firstOrNull() else null
+    val activeHero = if (cycling) step.cycleHeroes.getOrNull(cycle) else null
     val baitHighlight: Set<Bait> = when (step.highlight) {
         Highlight.FLASH_ALL_BAIT -> Bait.entries.toSet()
-        Highlight.CYCLE_HERO_BAIT, Highlight.CYCLE_HERO_TOTALS ->
-            activeHero?.let { setOf(it.preferredBait) } ?: emptySet()
+        Highlight.CYCLE -> activeHero?.let { setOf(it.preferredBait) } ?: emptySet()
         Highlight.NONE -> emptySet()
     }
-    val totalsBait = if (step.highlight == Highlight.CYCLE_HERO_TOTALS) activeHero?.preferredBait else null
+    val highlightHeroId = activeHero?.id
+    val human = step.game.players.first { it.name == HUMAN }
 
     Box(
         Modifier
             .fillMaxSize()
             .background(Palette.Page)
-            // Swallow taps on empty areas so nothing reaches the game underneath
-            // when the tutorial is opened from the in-game ☰ menu.
+            // Swallow taps on empty areas so nothing reaches a game underneath.
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
     ) {
         Column(
@@ -151,7 +134,8 @@ fun TutorialScreen(onExit: () -> Unit) {
                 .widthIn(max = 920.dp)
                 .background(Palette.AppBg)
         ) {
-            // Header: title + Exit.
+            // Top bar: mirrors the game's — title, the per-player totals strip,
+            // and an Exit where the ☰ menu would be.
             Row(
                 Modifier.fillMaxWidth().padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -160,6 +144,7 @@ fun TutorialScreen(onExit: () -> Unit) {
                 Text("Dungeon Boss", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Text("· Tutorial", fontSize = 12.sp, color = Palette.SubText)
                 Spacer(Modifier.weight(1f))
+                PlayerStatsStrip(step.game, human)
                 Box(
                     Modifier
                         .clip(RoundedCornerShape(6.dp))
@@ -171,427 +156,260 @@ fun TutorialScreen(onExit: () -> Unit) {
                 }
             }
 
-            // Board (scrolls if tall).
+            // Board — the real game body, or a pre-crawl dungeon preview.
             Column(
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                BoardView(step.board, baitHighlight, glow, activeHero, totalsBait)
+                val crawl = step.crawl
+                if (crawl != null) {
+                    val owner = step.game.players.first { it.name == step.viewed }
+                    DungeonBoard(
+                        tick = 0,
+                        game = step.game,
+                        player = owner,
+                        decision = null,
+                        onChooseBoss = {},
+                        roomClick = null,
+                        newSlotClick = null,
+                        boostRooms = emptySet(),
+                        onBoost = {},
+                        onShowDetail = {},
+                        activeIndex = null,
+                        incoming = crawl.party,
+                        prediction = crawl.prediction
+                    )
+                } else {
+                    GameBody(
+                        tick = 0,
+                        game = step.game,
+                        humanName = HUMAN,
+                        viewed = step.viewed,
+                        decision = step.decision,
+                        selection = null,
+                        onSelect = {},
+                        onDecide = { _, _ -> },
+                        pendingAbility = null,
+                        onPickAbility = {},
+                        onTargetRoom = {},
+                        pendingBoostRoom = null,
+                        onChooseBoostRoom = {},
+                        onBoostWithCard = {},
+                        onPlayBlueprints = {},
+                        onShowDetail = {},
+                        onNewGame = {},
+                        activeIndex = null,
+                        heroHp = emptyMap(),
+                        deadSet = emptyList(),
+                        baitHighlight = baitHighlight,
+                        baitGlow = glow,
+                        highlightHeroId = highlightHeroId
+                    )
+                }
             }
 
-            // Narration + controls, pinned at the bottom like the advance bar.
-            NarrationPanel(
-                text = step.narration,
-                index = index,
-                total = steps.size,
-                onBack = { if (index > 0) index -= 1 },
-                onNext = { if (index < steps.lastIndex) index += 1 else onExit() }
-            )
-        }
-    }
-}
-
-@Composable
-private fun BoardView(
-    board: TutorialBoard,
-    baitHighlight: Set<Bait>,
-    glow: Float,
-    highlightHero: Hero?,
-    totalsBait: Bait?
-) {
-    board.caption?.let {
-        Text(it, fontSize = 12.sp, color = Palette.SubText, fontWeight = FontWeight.Bold)
-    }
-
-    if (board.baitTotals.isNotEmpty()) {
-        BaitTotalsPanel(board.baitTotals, totalsBait, glow)
-    }
-
-    if (board.town.isNotEmpty()) {
-        Text("Town", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Palette.PartyHead)
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            board.town.forEach { entry -> TownEntryView(entry, highlightHero) }
-        }
-    }
-
-    if (board.bossChoice.isNotEmpty()) {
-        Text("Choose your boss", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Palette.PartyHead)
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            board.bossChoice.forEach { boss -> BossCardView(boss) }
-        }
-    }
-
-    if (board.hand.isNotEmpty()) {
-        Text("Your hand", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Palette.PartyHead)
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            board.hand.forEach { card -> HandCardView(card) }
-        }
-    }
-
-    if (board.abilities.isNotEmpty()) {
-        Text("Ability cards", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Palette.PartyHead)
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            board.abilities.forEach { card -> AbilityCardView(card) }
-        }
-    }
-
-    board.dungeon?.let { d -> DungeonBoardView(d, baitHighlight, glow, board.crawl) }
-}
-
-@Composable
-private fun DungeonBoardView(
-    d: DungeonView,
-    baitHighlight: Set<Bait>,
-    glow: Float,
-    crawl: List<CrawlChip>
-) {
-    val header = buildString {
-        append(d.ownerLabel)
-        append(" — dungeon (entrance on the left)")
-        if (d.points > 0) append("   🪙 ${d.points}")
-    }
-    Text(header, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Palette.PartyHead)
-    Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        d.rooms.forEach { room ->
-            RoomCardView(room, baitHighlight = baitHighlight, baitGlow = glow)
-        }
-        BossCardView(d.boss, baitHighlight = baitHighlight, baitGlow = glow)
-    }
-    if (crawl.isNotEmpty()) {
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            crawl.forEach { c -> HeroChip(c.name, c.hp, c.maxHp, c.dead) }
-        }
-    }
-}
-
-@Composable
-private fun TownEntryView(entry: TownEntry, highlightHero: Hero?) {
-    if (entry.heroes.size == 1) {
-        val hero = entry.heroes.first()
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            HeroCardView(hero, highlighted = highlightHero === hero)
-            if (entry.timid) TimidBadge()
-        }
-    } else {
-        // A formed party: members boxed together with their combined stats.
-        val courage = entry.heroes.sumOf { it.courage }
-        val baitTotals = LinkedHashMap<Bait, Int>()
-        entry.heroes.forEach { baitTotals[it.preferredBait] = (baitTotals[it.preferredBait] ?: 0) + 1 }
-        Column(
-            Modifier
-                .clip(RoundedCornerShape(10.dp))
-                .background(Palette.PartyBg)
-                .border(1.dp, Palette.PartyBorder, RoundedCornerShape(10.dp))
-                .padding(6.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                "Party · 🦁 $courage · ${CardArt.baitSummary(baitTotals)}",
-                fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Palette.PartyHead
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                entry.heroes.forEach { hero -> HeroCardView(hero, highlighted = highlightHero === hero) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TimidBadge() {
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(Palette.DyingBg)
-            .border(1.dp, Palette.Damage, RoundedCornerShape(8.dp))
-            .padding(horizontal = 6.dp, vertical = 1.dp)
-    ) {
-        Text("😨 too timid", fontSize = 10.sp, color = Palette.Damage, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-private fun BaitTotalsPanel(rows: List<BaitTotalsRow>, highlightBait: Bait?, glow: Float) {
-    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
-        Column(
-            Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .border(1.dp, Palette.CardBorder, RoundedCornerShape(8.dp))
-                .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text("Bait totals", fontSize = 11.sp, color = Palette.SubText, fontWeight = FontWeight.Bold)
-            rows.forEach { row ->
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(row.label, fontSize = 11.sp, color = Palette.SubText, modifier = Modifier.width(64.dp))
-                    Bait.entries.forEach { bait ->
-                        val lit = bait == highlightBait
-                        Box(
-                            Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(CardArt.pipColor(bait))
-                                .then(
-                                    if (lit) Modifier.border(2.dp, Palette.Highlight.copy(alpha = glow), RoundedCornerShape(8.dp))
-                                    else Modifier
-                                )
-                                .padding(horizontal = 6.dp, vertical = 1.dp)
-                        ) {
-                            Text("${CardArt.baitEmoji[bait]} ${row.totals[bait] ?: 0}", fontSize = 11.sp)
-                        }
-                    }
+            // Narration + controls, where the game's advance bar sits.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Palette.HighlightFill)
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(step.text, fontSize = 14.sp, color = Color(0xFF222222), modifier = Modifier.weight(1f))
+                if (index > 0) {
+                    OutlinedButton(onClick = { index -= 1 }) { Text("Back", fontSize = 13.sp) }
+                }
+                Button(
+                    onClick = { if (index < steps.lastIndex) index += 1 else onExit() },
+                    colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
+                ) {
+                    Text(if (index < steps.lastIndex) "Continue" else "Finish", color = Color.White)
                 }
             }
         }
     }
 }
 
-@Composable
-private fun NarrationPanel(
-    text: String,
-    index: Int,
-    total: Int,
-    onBack: () -> Unit,
-    onNext: () -> Unit
-) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(Palette.HighlightFill)
-            .padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // The narration replaces the old step counter — it sits on the control
-        // line and takes the remaining width.
-        Text(text, fontSize = 14.sp, color = Color(0xFF222222), modifier = Modifier.weight(1f))
-        if (index > 0) {
-            OutlinedButton(onClick = onBack) { Text("Back", fontSize = 13.sp) }
-        }
-        Button(
-            onClick = onNext,
-            colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
-        ) {
-            Text(if (index < total - 1) "Continue" else "Finish", color = Color.White)
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
-// Content: the 13 narrated steps. Boards are built from real cards so they look
-// identical to the live game. Text is the script agreed in docs/screens.md.
+// Content: 13 narrated steps over real Game snapshots. The narration is the only
+// text shown; everything else is the live game's own rendering.
 // ---------------------------------------------------------------------------
 
 private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
-    fun room(id: String) = PlacedRoom(lib.rooms.first { it.id == id })
-    fun boss(id: String) = lib.bosses.first { it.id == id }
-    fun hero(id: String) = lib.heroes.first { it.id == id }
-    fun ability(id: String) = lib.abilityCards.first { it.id == id }
+    fun room(id: String): Room = lib.rooms.first { it.id == id }
+    fun boss(id: String): Boss = lib.bosses.first { it.id == id }
+    fun hero(id: String): Hero = lib.heroes.first { it.id == id }
+    fun ability(id: String): AbilityCard = lib.abilityCards.first { it.id == id }
 
-    val cleric = hero("hero_cleric")
-    val barbarian = hero("hero_barbarian")
-    val rogue = hero("hero_rogue")
-    val mage = hero("hero_mage")
+    fun newGame() = Game(lib, listOf("Player 1", "Player 2"))
 
-    // A varied full dungeon (one room of each bait, plus a second glory room) used
-    // across the bait-teaching steps. Totals below match these rooms + the Lich.
-    fun showcaseDungeon(owner: String = "Player 1", points: Int = 0) = DungeonView(
-        ownerLabel = owner,
-        rooms = listOf(
-            room("room_stone_ball"),   // glory · 5
-            room("room_golden_idol"),  // riches · 3
-            room("room_ghoul_pit"),    // undead · 5
-            room("room_will_o_wisps"), // power · 5
-            room("room_gladiator")     // glory · 4
-        ),
-        boss = boss("boss_lich"),      // undead + power
-        points = points
+    // Build a dungeon: rooms left→right (first id is the entrance), then the boss.
+    fun dungeon(bossId: String, roomIds: List<String>): Dungeon {
+        val d = Dungeon(boss(bossId))
+        roomIds.reversed().forEach { d.addRoomToLeft(room(it)) } // addRoomToLeft prepends
+        return d
+    }
+
+    // A varied dungeon with one room of each bait (used across several steps).
+    val showcaseRooms = listOf(
+        "room_stone_ball",   // glory · 5
+        "room_golden_idol",  // riches · 3
+        "room_ghoul_pit",    // undead · 5
+        "room_will_o_wisps", // power · 5
+        "room_gladiator"     // glory · 4
     )
-    val showcaseTotals = listOf(
-        BaitTotalsRow("Player 1", mapOf(Bait.GLORY to 2, Bait.RICHES to 1, Bait.UNDEAD to 2, Bait.POWER to 2)),
-        BaitTotalsRow("Player 2", mapOf(Bait.GLORY to 1, Bait.RICHES to 2, Bait.UNDEAD to 1, Bait.POWER to 0))
-    )
-    // One of each hero, in town, as lone heroes (board/town order left to right).
-    val oneOfEach = listOf(
-        TownEntry(listOf(barbarian)),
-        TownEntry(listOf(rogue)),
-        TownEntry(listOf(cleric)),
-        TownEntry(listOf(mage))
+    fun showcase() = dungeon("boss_lich", showcaseRooms) // boss: undead + power
+
+    fun lone(vararg ids: String) = ids.map { Party(listOf(hero(it))) }
+
+    // Player 1's showcase dungeon; Player 2 gets a different one so the totals
+    // strip shows a real comparison.
+    fun gameWithDungeons(points: Int = 0): Game {
+        val g = newGame()
+        g.players[0].dungeon = showcase()
+        g.players[0].points = points
+        g.players[1].dungeon = dungeon("boss_oni", listOf("room_goblins", "room_suspicious_treasure", "room_mana_storm"))
+        return g
+    }
+
+    // Only Player 1 has a dungeon, so town heroes are unambiguously lured to it
+    // (no bait ties) — used for the courage / party steps where timidity matters.
+    fun soloGame(points: Int): Game {
+        val g = newGame()
+        g.players[0].dungeon = showcase()
+        g.players[0].points = points
+        return g
+    }
+
+    val cycleHeroes = listOf(hero("hero_barbarian"), hero("hero_rogue"), hero("hero_cleric"), hero("hero_mage"))
+
+    // A small representative hand for the bait-teaching steps.
+    fun handCards() = listOf(room("room_goblins"), room("room_mana_storm"), room("room_golden_idol"))
+
+    // 1 — intro
+    val s1 = TutorialStep(
+        "In Dungeon Boss you play the villain. You have a dungeon of 5 rooms plus the boss chamber where heroes come in and try to defeat you.",
+        gameWithDungeons()
     )
 
-    return listOf(
-        // 1 — intro
-        TutorialStep(
-            "In Dungeon Boss you play the villain. You have a dungeon of 5 rooms plus the boss chamber where heroes come in and try to defeat you.",
-            TutorialBoard(dungeon = showcaseDungeon())
-        ),
-        // 2 — choose boss + place rooms
-        TutorialStep(
-            "The game is played by first choosing a boss from two cards, then placing rooms in one of 5 slots.",
-            TutorialBoard(
-                bossChoice = listOf(boss("boss_medusa"), boss("boss_oni")),
-                hand = listOf(
-                    lib.rooms.first { it.id == "room_stone_ball" },
-                    lib.rooms.first { it.id == "room_goblins" },
-                    lib.rooms.first { it.id == "room_ghoul_pit" },
-                    lib.rooms.first { it.id == "room_golden_idol" }
-                )
-            )
-        ),
-        // 3 — rooms have bait icons (flash all)
-        TutorialStep(
-            "Each room, including the boss room, has icons at the bottom right indicating which heroes will be attracted to them.",
-            TutorialBoard(town = oneOfEach, dungeon = showcaseDungeon()),
-            Highlight.FLASH_ALL_BAIT
-        ),
-        // 4 — heroes prefer a bait (cycle hero + matching room bait)
-        TutorialStep(
-            "Each hero prefers a specific type of bait. Barbarians seek glory, Rogues seek riches, Clerics seek to destroy the undead, and Mages seek Arcane Power.",
-            TutorialBoard(town = oneOfEach, dungeon = showcaseDungeon()),
-            Highlight.CYCLE_HERO_BAIT
-        ),
-        // 5 — heroes go to the dungeon with the most preferred bait; totals top-right
-        TutorialStep(
-            "Each hero will take turns, starting with the left most hero, crawling through a dungeon. The hero will only go to a dungeon if that dungeon has more of the hero's preferred bait than the other dungeons. If there is a tie then the hero will stay in town. At the top right of the screen we can see each player's bait totals.",
-            TutorialBoard(baitTotals = showcaseTotals, town = oneOfEach, dungeon = showcaseDungeon()),
-            Highlight.CYCLE_HERO_TOTALS
-        ),
-        // 6 — crawl room by room; hero dies
-        TutorialStep(
-            "When a hero crawls a dungeon they will go through each room from left to right. Each room will deal the listed damage to the hero until that hero dies or each room is completed.",
-            TutorialBoard(
-                caption = "The Mage (4 HP) is about to crawl a deadly dungeon.",
-                dungeon = DungeonView(
-                    "Player 1",
-                    rooms = listOf(
-                        room("room_stone_ball"),   // 5 — kills the 4-HP Mage immediately
-                        room("room_ghoul_pit"),    // 5
-                        room("room_will_o_wisps"), // 5
-                        room("room_gladiator"),    // 4
-                        room("room_goblins")       // 3
-                    ),
-                    boss = boss("boss_medusa")
-                ),
-                crawl = listOf(CrawlChip("Mage", 4, 4, dead = false))
-            )
-        ),
-        // 7 — score a point per death; courage
-        TutorialStep(
-            "Each player scores a point for each hero that dies in their dungeon. When heroes die in a dungeon other heroes become more cautious and may avoid that dungeon depending upon their courage score. Barbarians and Clerics have a courage of 2, which means they will avoid dungeons that have 3 or more points. Rogues and Mages have a courage of 1, which means they will avoid dungeons that have 2 or more points.",
-            TutorialBoard(
-                caption = "Player 1's dungeon has 3 points, so timid heroes hang back.",
-                town = listOf(
-                    TownEntry(listOf(barbarian), timid = true),
-                    TownEntry(listOf(rogue), timid = true),
-                    TownEntry(listOf(cleric), timid = true),
-                    TownEntry(listOf(mage), timid = true)
-                ),
-                dungeon = showcaseDungeon(points = 3)
-            )
-        ),
-        // 8 — skipped heroes stay and form parties
-        TutorialStep(
-            "When heroes skip a dungeon, due to low courage or when a dungeon has tied bait, they stay in town and will form a party at the end of the round. Each hero, or party, that stayed in town will try to add one new member to their party. Each will add the left most unpartied hero preferring heroes of classes they don't have.",
-            TutorialBoard(
-                caption = "These heroes all stayed behind — at end of round they band together.",
-                town = listOf(
-                    TownEntry(listOf(barbarian), timid = true),
-                    TownEntry(listOf(rogue), timid = true),
-                    TownEntry(listOf(cleric), timid = true),
-                    TownEntry(listOf(mage), timid = true)
-                )
-            )
-        ),
-        // 9 — parties: courage = sum, bait = all members'
-        TutorialStep(
-            "Parties have a courage score equal to the sum of each party member. Parties also consider all members' bait preferences. If a party has multiple heroes of the same class then that class's bait is added once for each hero.",
-            TutorialBoard(
-                caption = "The same heroes, now grouped into parties — bolder together.",
-                town = listOf(
-                    TownEntry(listOf(barbarian, rogue)),
-                    TownEntry(listOf(cleric, mage))
-                )
-            )
-        ),
-        // 10 — party crawl; highest-HP hero takes the hit; some die
-        TutorialStep(
-            "When a party explores a dungeon the hero with the highest HP typically takes the damage for the next room, but some rooms have special abilities that target all heroes or target specific heroes.",
-            TutorialBoard(
-                caption = "A party crawls Player 1's dungeon — some fall, some survive.",
-                dungeon = showcaseDungeon(),
-                crawl = listOf(
-                    CrawlChip("Barbarian", 3, 8, dead = false),
-                    CrawlChip("Mage", 0, 4, dead = true),
-                    CrawlChip("Rogue", 2, 6, dead = false)
-                )
-            )
-        ),
-        // 11 — hero special abilities reduce damage (here, to zero)
-        TutorialStep(
-            "Each hero has a special ability. A Barbarian reduces all damage that they take by half. Rogues reduce all damage the party takes from trap rooms by 2. Clerics reduce all damage rooms with the undead bait icon deal by 4. Mages reduce all damage rooms with the arcane bait icon by 4.",
-            TutorialBoard(
-                caption = "Cleric + Mage shrug off this undead/arcane dungeon entirely.",
-                dungeon = DungeonView(
-                    "Player 1",
-                    rooms = listOf(
-                        room("room_zombies"),   // undead · 3 — Cleric −4 → 0
-                        room("room_mana_storm"),// power · 3 — Mage −4 → 0
-                        room("plague_zombie")   // undead · 4 — Cleric −4 → 0
-                    ),
-                    boss = boss("boss_lich")    // undead + power
-                ),
-                crawl = listOf(
-                    CrawlChip("Cleric", 5, 5, dead = false),
-                    CrawlChip("Mage", 4, 4, dead = false)
-                )
-            )
-        ),
-        // 12 — ability cards
-        TutorialStep(
-            "Each player has a number of ability cards that they can play. These cards may make a party flee, increase the damage they take, or prevent a room from damaging them. There is also another card that draws additional room cards. Players start with two ability cards and gain another card each round that no one attacks them.",
-            TutorialBoard(
-                abilities = listOf(
-                    ability("ability_return_to_town"),
-                    ability("ability_extra_damage"),
-                    ability("ability_no_damage"),
-                    ability("ability_full_damage"),
-                    ability("ability_draw_rooms")
-                )
-            )
-        ),
-        // 13 — wounds and the win condition
-        TutorialStep(
-            "Whenever a hero survives all of the rooms of a dungeon that player gains a wound. If they gain 5 wounds they lose. Whenever a player gains 10 points then the game ends. Whoever ends the game gains 5 points. After the game ends each player loses 2 points per wound, and whoever ends up with the most points wins.",
-            TutorialBoard(
-                caption = "Race to 10 points without collecting 5 wounds.",
-                baitTotals = listOf(
-                    BaitTotalsRow("Player 1", mapOf(Bait.GLORY to 2, Bait.RICHES to 1, Bait.UNDEAD to 2, Bait.POWER to 2))
-                ),
-                dungeon = showcaseDungeon(points = 8)
-            )
+    // 2 — choose boss + place rooms (real CHOOSE_BOSS decision; dungeon not yet built)
+    val g2 = newGame()
+    g2.players[0].roomHand.addAll(
+        listOf(room("room_stone_ball"), room("room_goblins"), room("room_ghoul_pit"), room("room_golden_idol"))
+    )
+    val s2 = TutorialStep(
+        "The game is played by first choosing a boss from two cards, then placing rooms in one of 5 slots.",
+        g2,
+        decision = Decision(DecisionKind.CHOOSE_BOSS, g2.players[0], listOf(boss("boss_medusa"), boss("boss_oni")))
+    )
+
+    // 3 — rooms have bait icons (all flashing)
+    val g3 = gameWithDungeons()
+    g3.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric", "hero_mage"))
+    g3.players[0].roomHand.addAll(handCards())
+    val s3 = TutorialStep(
+        "Each room, including the boss room, has icons at the bottom right indicating which heroes will be attracted to them.",
+        g3, highlight = Highlight.FLASH_ALL_BAIT
+    )
+
+    // 4 — each hero prefers a bait (cycle hero + its bait in the rooms)
+    val g4 = gameWithDungeons()
+    g4.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric", "hero_mage"))
+    g4.players[0].roomHand.addAll(handCards())
+    val s4 = TutorialStep(
+        "Each hero prefers a specific type of bait. Barbarians seek glory, Rogues seek riches, Clerics seek to destroy the undead, and Mages seek Arcane Power.",
+        g4, highlight = Highlight.CYCLE, cycleHeroes = cycleHeroes
+    )
+
+    // 5 — heroes go to the dungeon with the most preferred bait; totals top-right
+    val g5 = gameWithDungeons()
+    g5.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric", "hero_mage"))
+    g5.players[0].roomHand.addAll(handCards())
+    val s5 = TutorialStep(
+        "Each hero will take turns, starting with the left most hero, crawling through a dungeon. The hero will only go to a dungeon if that dungeon has more of the hero's preferred bait than the other dungeons. If there is a tie then the hero will stay in town. At the top right of the screen we can see each player's bait totals.",
+        g5, highlight = Highlight.CYCLE, cycleHeroes = cycleHeroes
+    )
+
+    // 6 — crawl room by room; the hero dies
+    val g6 = newGame()
+    val deadly = dungeon("boss_medusa", listOf("room_stone_ball", "room_ghoul_pit", "room_will_o_wisps", "room_gladiator", "room_goblins"))
+    g6.players[0].dungeon = deadly
+    val mage = Party(listOf(hero("hero_mage")))
+    val s6 = TutorialStep(
+        "When a hero crawls a dungeon they will go through each room from left to right. Each room will deal the listed damage to the hero until that hero dies or each room is completed.",
+        g6, crawl = CrawlView(mage, PartyCrawlResolver.resolve(mage, deadly, dryRun = true))
+    )
+
+    // 7 — score a point per death; courage
+    val g7 = soloGame(points = 3)
+    g7.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric", "hero_mage"))
+    val s7 = TutorialStep(
+        "Each player scores a point for each hero that dies in their dungeon. When heroes die in a dungeon other heroes become more cautious and may avoid that dungeon depending upon their courage score. Barbarians and Clerics have a courage of 2, which means they will avoid dungeons that have 3 or more points. Rogues and Mages have a courage of 1, which means they will avoid dungeons that have 2 or more points.",
+        g7
+    )
+
+    // 8 — skipped heroes stay and form parties
+    val g8 = soloGame(points = 3)
+    g8.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric", "hero_mage"))
+    val s8 = TutorialStep(
+        "When heroes skip a dungeon, due to low courage or when a dungeon has tied bait, they stay in town and will form a party at the end of the round. Each hero, or party, that stayed in town will try to add one new member to their party. Each will add the left most unpartied hero preferring heroes of classes they don't have.",
+        g8
+    )
+
+    // 9 — parties: courage = sum, bait = all members'
+    val g9 = soloGame(points = 2)
+    g9.town.add(Party(listOf(hero("hero_barbarian"), hero("hero_rogue"))))
+    g9.town.add(Party(listOf(hero("hero_cleric"), hero("hero_mage"))))
+    val s9 = TutorialStep(
+        "Parties have a courage score equal to the sum of each party member. Parties also consider all members' bait preferences. If a party has multiple heroes of the same class then that class's bait is added once for each hero.",
+        g9
+    )
+
+    // 10 — party crawl; highest-HP hero takes the hit; some die
+    val g10 = gameWithDungeons()
+    val mixedParty = Party(listOf(hero("hero_barbarian"), hero("hero_mage"), hero("hero_rogue")))
+    val s10 = TutorialStep(
+        "When a party explores a dungeon the hero with the highest HP typically takes the damage for the next room, but some rooms have special abilities that target all heroes or target specific heroes.",
+        g10, crawl = CrawlView(mixedParty, PartyCrawlResolver.resolve(mixedParty, g10.players[0].dungeon!!, dryRun = true))
+    )
+
+    // 11 — hero special abilities reduce damage (here, to nothing)
+    val g11 = newGame()
+    val warded = dungeon("boss_lich", listOf("room_zombies", "room_mana_storm", "plague_zombie"))
+    g11.players[0].dungeon = warded
+    val clericMage = Party(listOf(hero("hero_cleric"), hero("hero_mage")))
+    val s11 = TutorialStep(
+        "Each hero has a special ability. A Barbarian reduces all damage that they take by half. Rogues reduce all damage the party takes from trap rooms by 2. Clerics reduce all damage rooms with the undead bait icon deal by 4. Mages reduce all damage rooms with the arcane bait icon by 4.",
+        g11, crawl = CrawlView(clericMage, PartyCrawlResolver.resolve(clericMage, warded, dryRun = true))
+    )
+
+    // 12 — ability cards (shown in hand)
+    val g12 = gameWithDungeons()
+    g12.players[0].abilityHand.addAll(
+        listOf(
+            ability("ability_return_to_town"),
+            ability("ability_extra_damage"),
+            ability("ability_no_damage"),
+            ability("ability_full_damage"),
+            ability("ability_draw_rooms")
         )
     )
+    val s12 = TutorialStep(
+        "Each player has a number of ability cards that they can play. These cards may make a party flee, increase the damage they take, or prevent a room from damaging them. There is also another card that draws additional room cards. Players start with two ability cards and gain another card each round that no one attacks them.",
+        g12
+    )
+
+    // 13 — wounds and the win condition
+    val s13 = TutorialStep(
+        "Whenever a hero survives all of the rooms of a dungeon that player gains a wound. If they gain 5 wounds they lose. Whenever a player gains 10 points then the game ends. Whoever ends the game gains 5 points. After the game ends each player loses 2 points per wound, and whoever ends up with the most points wins.",
+        gameWithDungeons(points = 8)
+    )
+
+    return listOf(s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13)
 }
