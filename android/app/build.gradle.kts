@@ -16,13 +16,31 @@ android {
         versionName = "1.0"
     }
 
+    // A committed, stable signing key so every build (on any machine) is signed
+    // with the same certificate. Without this, each build environment generates
+    // a fresh debug keystore, changing the app's signature — which makes Google
+    // Play Protect treat each install as an unknown new developer and block it.
+    // This is a low-sensitivity key for a prototype, not a production secret.
+    signingConfigs {
+        create("shared") {
+            storeFile = file("dungeonboss.keystore")
+            storePassword = "dungeonboss"
+            keyAlias = "dungeonboss"
+            keyPassword = "dungeonboss"
+        }
+    }
+
     buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("shared")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("shared")
         }
     }
 
