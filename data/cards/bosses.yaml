@@ -1,7 +1,7 @@
 bosses:
   - id: boss_lich
     name: Lich
-    damage: 4
+    lead_damage: 4
     bait:
       undead: 1
       arcane: 1
@@ -13,7 +13,7 @@ bosses:
 
   - id: boss_oni
     name: Oni
-    damage: 8
+    lead_damage: 8
     bait:
       glory: 1
       arcane: 1
@@ -26,7 +26,7 @@ bosses:
 
   - id: boss_vampire
     name: Vampire
-    damage: 4
+    lead_damage: 4
     bait:
       undead: 1
       riches: 1
@@ -36,14 +36,14 @@ bosses:
 
   - id: boss_medusa
     name: Medusa
-    damage: 8
+    lead_damage: 8
     bait:
       glory: 1
     ability_text: ""
 
   - id: boss_goblin_chieftain
     name: Goblin Chieftain
-    damage: 4
+    lead_damage: 4
     bait:
       glory: 1
       riches: 1
@@ -56,7 +56,7 @@ bosses:
 
   - id: boss_malevolent_spirit
     name: Malevolent Spirit
-    damage: 2
+    lead_damage: 2
     bait:
       undead: 1
       arcane: 1
@@ -67,7 +67,7 @@ bosses:
 
   - id: boss_kobold_chieftain
     name: Kobold Chieftain
-    damage: 5
+    lead_damage: 5
     bait:
       riches: 1
       glory: 1
@@ -79,7 +79,7 @@ bosses:
 
   - id: boss_necromancer
     name: Necromancer
-    damage: 4
+    lead_damage: 4
     bait:
       undead: 1
       arcane: 1

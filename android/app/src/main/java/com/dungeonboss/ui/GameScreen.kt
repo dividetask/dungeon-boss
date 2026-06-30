@@ -70,14 +70,13 @@ import com.dungeonboss.model.Encounter
 import com.dungeonboss.model.Hero
 import com.dungeonboss.model.PlacedRoom
 import com.dungeonboss.model.Room
-import com.dungeonboss.model.Upgrade
 import kotlinx.coroutines.delay
 
 /** Bump this every UI change so the on-screen tag confirms which build is running. */
 const val UI_BUILD = "43 (undo an ability play in the pre-crawl window)"
 
 /** What the human has tapped in hand while building, awaiting a dungeon slot. */
-private data class Selection(val cardId: String, val isUpgrade: Boolean)
+private data class Selection(val cardId: String)
 
 @Composable
 fun GameScreen(vm: GameViewModel = viewModel()) {
@@ -436,13 +435,12 @@ private fun GameBody(
                         // Identical cards are shown once with a ×count badge.
                         human.roomHand.groupBy { it.id }.values.forEach { group ->
                             val card = group.first()
-                            val isUpgrade = card is Upgrade
                             // First room and Build both pick a card, then tap a slot.
                             val selectableForBuild = choosingBuild || (choosingFirst && card is Room && !card.advanced)
                             val modifier = when {
                                 boostingHere -> Modifier.clickable { onBoostWithCard(card.id) }
                                 choosingDiscard -> Modifier.clickable { onToggleDiscard(card.id) }
-                                selectableForBuild -> Modifier.clickable { onSelect(Selection(card.id, isUpgrade)) }
+                                selectableForBuild -> Modifier.clickable { onSelect(Selection(card.id)) }
                                 else -> Modifier
                             }
                             val highlighted = selection?.cardId == card.id ||
@@ -494,7 +492,6 @@ private fun GameBody(
     // The selected card (if any), used to gate which slot it may go in:
     //   basic room    → any slot (empty fills, occupied replaces)
     //   advanced room → an empty slot, or replace a room sharing a bait icon
-    //   upgrade card  → attach to any occupied slot
     val selectedCard = if (placingHere && selection != null) {
         human.roomHand.firstOrNull { it.id == selection.cardId }
     } else null
@@ -505,7 +502,6 @@ private fun GameBody(
         val card = selectedCard ?: return false
         val occupant = viewedPlayer.dungeon?.slots?.getOrNull(slot)
         return when {
-            card is Upgrade -> occupant != null                       // attach to a room
             card is Room && card.advanced ->
                 occupant == null || occupant.bait.shares(card.bait)   // empty, or bait-share replace
             card is Room -> true                                       // basic: any slot
@@ -532,7 +528,7 @@ private fun GameBody(
     val boostRooms: Set<Int> =
         if (preCrawl && crawlOwner == human && viewedPlayer == human && pendingAbility == null && pendingBoostRoom == null) {
             human.dungeon?.rooms?.indices?.filter {
-                RoomEffect.forEncounter(human.dungeon!!.rooms[it]).boostable() && !game.crawlMods().boosted(it)
+                RoomEffect.boostable(human.dungeon!!.rooms[it])
             }?.toSet() ?: emptySet()
         } else emptySet()
 
@@ -1221,28 +1217,21 @@ private fun CardDetailDialog(card: Any, onDismiss: () -> Unit) {
                     is PlacedRoom -> {
                         DetailHeader(CardArt.roomArt(card.type), card.name,
                             if (card.baseRoom.advanced) "Advanced · ${card.type}" else card.type)
-                        DetailStat("Damage", card.damage.toString())
-                        card.upgrade?.let { DetailStat("Upgrade", it.name) }
-                        if (card.grow > 0) DetailStat("Grown", "+${card.grow}")
+                        DetailStat("Damage", damageSummary(card))
+                        if (card.level > 0) DetailStat("Level", card.level.toString())
                         DetailBait(card.bait)
                         DetailBody(card.description)
                     }
                     is Boss -> {
                         DetailHeader(CardArt.bossArt(card.id), card.name, "Boss")
-                        DetailStat("Damage", card.damage.toString())
+                        DetailStat("Damage", card.displayDamage.toString())
                         DetailBait(card.bait)
                         DetailBody(card.abilityText)
                     }
                     is Room -> {
                         DetailHeader(CardArt.roomArt(card.type), card.name,
                             if (card.advanced) "Advanced · ${card.type}" else card.type)
-                        DetailStat("Damage", card.damage.toString())
-                        DetailBait(card.bait)
-                        DetailBody(card.description)
-                    }
-                    is Upgrade -> {
-                        DetailHeader("⬆️", card.name, "Upgrade")
-                        if (card.bonusDamage > 0) DetailStat("Bonus damage", "+${card.bonusDamage}")
+                        DetailStat("Damage", damageSummary(card))
                         DetailBait(card.bait)
                         DetailBody(card.description)
                     }
@@ -1325,4 +1314,22 @@ private fun encounterName(encounter: Encounter): String = when (encounter) {
     is PlacedRoom -> encounter.name
     is Boss -> encounter.name
     else -> "?"
+}
+
+/** A short human-readable damage line for the detail dialog (lead / all / rear + resist / poison). */
+private fun damageSummary(e: Encounter): String {
+    val channels = mutableListOf<String>()
+    if (e.leadDamage > 0) channels.add("Lead ${e.leadDamage}")
+    if (e.damageAll > 0) channels.add("All ${e.damageAll}" + (e.damageFilter?.let { " ($it)" } ?: ""))
+    if (e.damageRear > 0) channels.add("Rear ${e.damageRear}")
+    if (channels.isEmpty()) channels.add(e.displayDamage.toString())
+
+    val extra = mutableListOf<String>()
+    if (e.poisonDamage > 0) extra.add("poison ${e.poisonDamage}" + if (e.poisonPersists) "/room" else " next room")
+    when (e.roomResist) {
+        true -> extra.add("can't be reduced")
+        false -> extra.add("can't be halved")
+        else -> {}
+    }
+    return channels.joinToString(" / ") + if (extra.isNotEmpty()) " · ${extra.joinToString(", ")}" else ""
 }

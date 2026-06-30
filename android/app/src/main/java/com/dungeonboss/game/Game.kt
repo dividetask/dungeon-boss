@@ -42,9 +42,13 @@ class Game(
     val players: List<Player> = playerNames.map { Player(it) }
 
     val bossDeck: Deck<Boss> = Deck(library.bosses, rng).shuffle()
-    // Rooms, upgrades, and advanced rooms share one build deck.
+    // Basic and advanced rooms share one build deck. Advanced rooms seed the
+    // discard pile so they can't be in an opening hand; they enter circulation
+    // only after the first reshuffle.
     val roomDeck: Deck<BuildCard> =
-        Deck<BuildCard>(library.rooms + library.upgrades + library.advancedRooms, rng).shuffle()
+        Deck<BuildCard>(library.rooms, rng).shuffle().also { deck ->
+            library.advancedRooms.forEach { deck.discard(it) }
+        }
     val heroDeck: Deck<Hero> = Deck(library.heroes, rng).shuffle()
     val abilityDeck: Deck<AbilityCard> = Deck(library.abilityCards, rng).shuffle()
 
@@ -223,11 +227,15 @@ class Game(
         return this
     }
 
-    /** The dungeon owner discards a room card to boost one of their boostable rooms. */
+    /**
+     * The dungeon owner discards a room card to temporarily boost one of their
+     * boostable rooms (Power Word / Undead Hands). Each discarded card adds the
+     * room's discard amount to its damage for this crawl only — boosts stack.
+     */
     fun boostRoom(cardId: String, roomIndex: Int): Game {
         val owner = currentCrawl?.first ?: return this
         val room = owner.dungeon!!.rooms[roomIndex]
-        if (crawlModifiers.boosted(roomIndex)) return this
+        if (!RoomEffect.boostable(room)) return this
 
         val discard = owner.takeRoomFromHand(cardId)
             ?: throw IllegalArgumentException("room not in hand: $cardId")
@@ -235,12 +243,7 @@ class Game(
         // A boost spends a room card, so the build can no longer be undone.
         undoablePlacement = null
 
-        val spec = RoomEffect.forEncounter(room).discardBoost()
-        if (spec != null) {
-            (spec["add_damage"] as? Number)?.let { crawlModifiers.addDamage(roomIndex, it.toInt()) }
-            (spec["set_damage"] as? Number)?.let { crawlModifiers.setDamage(roomIndex, it.toInt()) }
-            if (Effects.boolOf(spec["unreducible"])) crawlModifiers.unreducibleMark(roomIndex)
-        }
+        crawlModifiers.addDamage(roomIndex, RoomEffect.boostAmount(room))
         return this
     }
 
@@ -592,7 +595,7 @@ class Game(
         if (!automated(owner)) return
         val dungeon = owner.dungeon ?: return
         dungeon.rooms.forEachIndexed { i, room ->
-            if (!RoomEffect.forEncounter(room).boostable()) return@forEachIndexed
+            if (!RoomEffect.boostable(room)) return@forEachIndexed
             if (crawlModifiers.boosted(i)) return@forEachIndexed
             val spare = owner.roomHand.firstOrNull()
             if (spare != null && rng.nextDouble() < 0.5) boostRoom(spare.id, i)

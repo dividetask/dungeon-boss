@@ -4,26 +4,24 @@ import com.dungeonboss.game.Game
 import com.dungeonboss.game.Player
 import com.dungeonboss.model.BuildCard
 import com.dungeonboss.model.Room
-import com.dungeonboss.model.Upgrade
 
 /**
  * Build phase. A player MAY take one build action: place a room into any of the
- * 5 slots (an empty slot is filled, an occupied slot is replaced), spend a basic
- * or advanced room card to upgrade a placed room (granting its bait icons and a
- * room level), or attach a dedicated upgrade card. This phase exposes the step
- * the decision loop drives. Orchestration only. Mirrors `webapp/lib/build_phase`.
+ * 5 slots (an empty slot is filled, an occupied slot is replaced), or spend a
+ * basic/advanced room card to upgrade a placed room (granting its bait icons and
+ * a room level). This phase exposes the step the decision loop drives.
+ * Orchestration only.
  *
  * [place] target encoding:
- *   - placing a room          -> the slot index (Int 0..4)
- *   - attaching an Upgrade     -> the (occupied) slot index (Int)
- *   - upgrading with a room    -> the string "upgrade:<slot>" (the Room is spent)
+ *   - placing a room        -> the slot index (Int 0..4)
+ *   - upgrading with a room  -> the string "upgrade:<slot>" (the Room is spent)
  */
 object BuildPhase {
 
     /**
      * Apply a player's build choice. Returns the cards this action pushed to the
-     * room deck (a replaced room, a displaced upgrade, or the spent upgrade card),
-     * so the caller can reclaim them when undoing the placement.
+     * room deck (a replaced room, or the spent upgrade card), so the caller can
+     * reclaim them when undoing the placement.
      */
     fun place(game: Game, player: Player, cardId: String?, target: Any?): List<BuildCard> {
         if (cardId == null) return emptyList()
@@ -34,10 +32,6 @@ object BuildPhase {
         val discarded = mutableListOf<BuildCard>()
 
         when {
-            card is Upgrade -> {
-                val replaced = dungeon.applyUpgrade(slotOf(target), card)
-                if (replaced != null) { game.roomDeck.discard(replaced); discarded.add(replaced) }
-            }
             card is Room && isUpgradeWith(target) -> {
                 // Spend a basic/advanced room card to upgrade a placed room: grants
                 // its bait icons and a room level. The spent card is discarded.
@@ -61,7 +55,6 @@ object BuildPhase {
         val old = dungeon.placeRoom(slot, card)
         if (old != null) {
             game.roomDeck.discard(old.baseRoom); discarded.add(old.baseRoom) // replaced room returns to deck
-            old.upgrade?.let { game.roomDeck.discard(it); discarded.add(it) } // its upgrade is lost
         }
     }
 

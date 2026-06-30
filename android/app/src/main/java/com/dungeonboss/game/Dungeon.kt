@@ -4,7 +4,6 @@ import com.dungeonboss.model.Boss
 import com.dungeonboss.model.Encounter
 import com.dungeonboss.model.PlacedRoom
 import com.dungeonboss.model.Room
-import com.dungeonboss.model.Upgrade
 
 /**
  * One player's dungeon: a boss plus [SLOTS] ordered room slots, any of which may
@@ -38,17 +37,6 @@ class Dungeon(val boss: Boss) {
         val old = _slots[slot]
         _slots[slot] = PlacedRoom(room)
         return old
-    }
-
-    /**
-     * Attach an upgrade to the (occupied) room in [slot], returning the upgrade it
-     * replaced (or null). Each room holds at most one upgrade.
-     */
-    fun applyUpgrade(slot: Int, upgrade: Upgrade): Upgrade? {
-        val placed = requireNotNull(_slots[slot]) { "no room in slot $slot to upgrade" }
-        val previous = placed.upgrade
-        placed.upgrade = upgrade
-        return previous
     }
 
     /**

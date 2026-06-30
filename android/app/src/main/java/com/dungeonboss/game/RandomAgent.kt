@@ -2,7 +2,6 @@ package com.dungeonboss.game
 
 import com.dungeonboss.model.BuildCard
 import com.dungeonboss.model.Room
-import com.dungeonboss.model.Upgrade
 import kotlin.random.Random
 
 /**
@@ -40,9 +39,9 @@ class RandomAgent(private val rng: Random = Random.Default) {
     }
 
     /**
-     * Randomly build nothing, place a room into a slot, attach an upgrade, place an
-     * advanced room on a valid slot, or spend a room card to upgrade a placed room.
-     * Reads the live hand (it may have changed since queuing).
+     * Randomly build nothing, place a room into a slot, place an advanced room on
+     * a valid slot, or spend a room card to upgrade a placed room. Reads the live
+     * hand (it may have changed since queuing).
      */
     private fun buildMove(decision: Decision): Pair<String?, Any?> {
         val dungeon = decision.player.dungeon ?: return Pair(null, null)
@@ -51,11 +50,6 @@ class RandomAgent(private val rng: Random = Random.Default) {
 
         val slots = dungeon.slots
         val occupied = slots.indices.filter { slots[it] != null }
-
-        if (pick is Upgrade) {
-            if (occupied.isEmpty()) return Pair(null, null)
-            return Pair(pick.id, occupied.random(rng)) // attach to an occupied slot
-        }
 
         if (pick is Room && pick.advanced) {
             val empties = dungeon.emptySlots()

@@ -48,7 +48,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         val library = getApplication<Application>().assets.open(CARDS_ASSET).use { CardLibrary.load(it) }
         DebugLog.log(
             "loaded library: bosses=${library.bosses.size} rooms=${library.rooms.size} " +
-                "upgrades=${library.upgrades.size} advanced=${library.advancedRooms.size} " +
+                "advanced=${library.advancedRooms.size} " +
                 "heroes=${library.heroes.size} abilities=${library.abilityCards.size}"
         )
         val names = (1..count).map { "Player $it" }

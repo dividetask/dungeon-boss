@@ -32,7 +32,6 @@ import com.dungeonboss.model.BuildCard
 import com.dungeonboss.model.Hero
 import com.dungeonboss.model.PlacedRoom
 import com.dungeonboss.model.Room
-import com.dungeonboss.model.Upgrade
 
 private val CARD_WIDTH = 116.dp
 private val CARD_HEIGHT = 76.dp
@@ -211,8 +210,8 @@ fun BossCardView(
         CardFrame(Palette.BossBg, Palette.BossBorder, modifier, highlighted) {
             CardHeader(CardArt.bossArt(boss.id), boss.name + (ownerLabel?.let { " ($it)" } ?: ""))
             StatRow(
-                { Damage(parts?.sum() ?: boss.damage) },
-                { BaitWithMarkers(boss.bait, hasEffect = boss.effect.isNotEmpty(), upgraded = false) }
+                { Damage(parts?.sum() ?: boss.displayDamage) },
+                { BaitWithMarkers(boss.bait, hasEffect = boss.hasSpecial, upgraded = false) }
             )
             DamageBreakdown(parts)
         }
@@ -236,15 +235,15 @@ fun RoomCardView(
         ) {
             CardHeader(CardArt.roomArt(placed.type), placed.name)
             StatRow(
-                { Damage(parts?.sum() ?: placed.damage) },
-                { BaitWithMarkers(placed.bait, hasEffect = placed.effect.isNotEmpty(), upgraded = placed.upgrade != null) }
+                { Damage(parts?.sum() ?: placed.displayDamage) },
+                { BaitWithMarkers(placed.bait, hasEffect = placed.hasSpecial, upgraded = placed.level > 0) }
             )
             DamageBreakdown(parts)
         }
     }
 }
 
-/** A hand card: a base [Room] or an [Upgrade]. */
+/** A hand card: a base or advanced [Room]. */
 @Composable
 fun HandCardView(
     card: BuildCard,
@@ -261,21 +260,8 @@ fun HandCardView(
             ) {
                 CardHeader(CardArt.roomArt(card.type), card.name)
                 StatRow(
-                    { Damage(card.damage) },
-                    { BaitWithMarkers(card.bait, hasEffect = card.effect.isNotEmpty(), upgraded = false) }
-                )
-            }
-            is Upgrade -> CardFrame(Palette.UpgradeBg, Palette.UpgradeBorder, modifier, highlighted) {
-                CardHeader("⬆️", card.name)
-                StatRow(
-                    {
-                        if (card.bonusDamage > 0) {
-                            Text("+${card.bonusDamage} ⚔", color = Palette.Damage, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        } else {
-                            Text("")
-                        }
-                    },
-                    { BaitPips(card.bait) }
+                    { Damage(card.displayDamage) },
+                    { BaitWithMarkers(card.bait, hasEffect = card.hasSpecial, upgraded = false) }
                 )
             }
         }

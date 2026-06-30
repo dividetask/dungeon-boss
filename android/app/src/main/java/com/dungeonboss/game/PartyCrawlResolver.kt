@@ -1,21 +1,23 @@
 package com.dungeonboss.game
 
+import com.dungeonboss.game.HeroAbility.Resist
 import com.dungeonboss.model.Encounter
 import com.dungeonboss.model.Hero
 import com.dungeonboss.model.PlacedRoom
 
 /**
- * Runs a whole party through a dungeon, applying room effects. At each room, in
- * order: a poison tick, a one-shot delayed hit (Poisoned Spikes), the room's
- * party-wide hits (Antimagic/Zealots, unreducible), then a single-target hit on
- * the highest-health hero (reducible unless the room or a modifier says
- * otherwise). Single-target damage includes the room's grow bonus, dungeon auras
- * (Trap Makers / Beast Tamer), the boss's points bonus, and per-crawl modifiers.
- * A hero hit by a Poison Gas room is poisoned (+1 unreducible per later room). A
- * grow-on-death room gains +1 damage permanently per death there. A Retreat
- * modifier turns the party back before its target room. Stateless entry point;
- * uses an instance to carry crawl state. Mirrors
- * `webapp/lib/party_crawl_resolver.rb`.
+ * Runs a whole party through a dungeon, applying the flat field schema. At each
+ * encounter, in order: any active poison resolves (×[Encounter.poisonTicks]),
+ * then this room's damage channels — `damage_all` (optionally filtered to a hero
+ * class), then the `lead` hit on the highest-HP hero (overkill cascades to the
+ * next-highest), then the `rear` hit on the most-injured hero. Each channel base
+ * is `base + floor(increment * level)`. Boss self/room bonuses, room auras and
+ * per-crawl modifiers fold into the room's primary channel. A room's [roomResist]
+ * sets how a hero may reduce its damage; poison is always unreducible. A hero
+ * damaged by a poison room is poisoned (persisting or one-shot). A grow-on-death
+ * room rises one level per death; a draw-on-death room earns the owner one room
+ * and one ability card per death. A Retreat modifier turns the party back before
+ * its target room. Stateless entry point; uses an instance to carry crawl state.
  */
 object PartyCrawlResolver {
     data class Step(
@@ -45,13 +47,15 @@ object PartyCrawlResolver {
         dryRun: Boolean = false
     ): Result = Run(party, dungeon, bossBonus, modifiers, dryRun).resolve()
 
+    private data class Channels(val lead: Int, val all: Int, val rear: Int)
+
     private class Run(
         party: Party,
         private val dungeon: Dungeon,
         private val bossBonus: Int,
         private val mods: CrawlModifiers,
         // A dry run predicts the outcome without the one lasting side effect —
-        // grow-on-death rooms are not permanently grown — so it is safe to run
+        // grow-on-death rooms do not permanently level up — so it is safe to run
         // repeatedly (e.g. to preview a crawl before it is committed).
         private val dryRun: Boolean = false
     ) {
@@ -59,8 +63,8 @@ object PartyCrawlResolver {
         private val health = HashMap<Hero, Int>()
         private val alive = participants.toMutableList()
         private val dead = mutableListOf<Hero>()
-        private val poison = HashMap<Hero, Int>()    // hero -> poison stacks
-        private val delayed = HashMap<Hero, Int>()   // hero -> unreducible damage next room
+        private val poison = HashMap<Hero, Int>()    // hero -> persisting poison per room
+        private val delayed = HashMap<Hero, Int>()   // hero -> one-shot poison next room
         private val draws = HashMap<String, Int>()   // deck name -> cards owner draws
         private val log = mutableListOf<Step>()
 
@@ -82,8 +86,7 @@ object PartyCrawlResolver {
 
                 poisonTick(encounter)
                 if (alive.isNotEmpty()) delayedTick(encounter)
-                if (alive.isNotEmpty()) applyPartyHits(encounter)
-                if (alive.isNotEmpty()) applySingleTarget(encounter)
+                if (alive.isNotEmpty()) applyDamage(encounter)
                 grow(encounter)
                 recordDeathDraws(encounter)
             }
@@ -97,126 +100,150 @@ object PartyCrawlResolver {
             )
         }
 
-        /** Most current health, then most max health, then earliest board order. */
-        private fun pickTarget(): Hero =
+        /** Highest current health, then highest max health, then earliest board order. */
+        private fun pickHighest(): Hero =
             alive.maxWith(compareBy({ health.getValue(it) }, { it.maxHp }))
 
+        /** Lowest current health (most injured), then lowest max health, then board order. */
+        private fun pickLowest(): Hero =
+            alive.minWith(compareBy({ health.getValue(it) }, { it.maxHp }))
+
         private fun poisonTick(encounter: Encounter) {
+            val ticks = maxOf(1, encounter.poisonTicks)
             for (hero in alive.toList()) {
-                val stacks = poison[hero] ?: 0
-                if (stacks > 0) hit(hero, stacks, encounter, reducible = false)
+                val amount = poison[hero] ?: 0
+                if (amount <= 0) continue
+                repeat(ticks) { if (alive.contains(hero)) hit(hero, amount, encounter, Resist.NO_REDUCE) }
             }
         }
 
         private fun delayedTick(encounter: Encounter) {
+            val ticks = maxOf(1, encounter.poisonTicks)
             for (hero in alive.toList()) {
                 val amount = delayed[hero] ?: 0
-                if (amount > 0) {
-                    hit(hero, amount, encounter, reducible = false)
-                    delayed.remove(hero)
-                }
+                if (amount <= 0) continue
+                repeat(ticks) { if (alive.contains(hero)) hit(hero, amount, encounter, Resist.NO_REDUCE) }
+                delayed.remove(hero)
             }
         }
 
-        private fun applyPartyHits(encounter: Encounter) {
-            RoomEffect.forEncounter(encounter).partyHits(alive.toList()).forEach { (hero, amount) ->
-                if (alive.contains(hero)) hit(hero, amount, encounter, reducible = false)
+        private fun applyDamage(encounter: Encounter) {
+            if (mods.isZero(roomIndex)) return
+            val ch = channels(encounter)
+            val resist = resistMode(encounter)
+
+            // 1) Damage-all (optionally filtered to a hero class), each reduced
+            //    independently so e.g. a Rogue protects the whole party.
+            if (ch.all > 0) {
+                val filter = encounter.damageFilter
+                val targets = if (filter != null) alive.toList().filter { matchesFilter(it, filter) } else alive.toList()
+                for (hero in targets) applyHitWithPoison(hero, ch.all, encounter, resist)
             }
+            // 2) Lead hit on the highest-health hero; overkill cascades.
+            if (ch.lead > 0) cascade(ch.lead, encounter, resist) { pickHighest() }
+            // 3) Rear hit on the most-injured hero; overkill cascades.
+            if (ch.rear > 0) cascade(ch.rear, encounter, resist) { pickLowest() }
         }
 
-        private fun applySingleTarget(encounter: Encounter) {
-            val base = effectiveBase(encounter)
-            if (base <= 0) return
-
-            val effect = RoomEffect.forEncounter(encounter)
-            // A per-crawl unreducible (Expose Weakness / Troll) OR the room's own
-            // unreducible effect (Champion's Arena) makes this hit unreducible.
-            val reducible = mods.reducible(roomIndex) && !effect.unreducible()
-
-            if (effect.damagesAll()) {
-                // The base hit lands on every alive hero (Poison Gas). Each hit is
-                // reduced independently (so a Rogue protects the whole party), and
-                // only heroes actually damaged are poisoned. Snapshot the list so
-                // a hero killed by this room is not hit twice.
-                for (hero in alive.toList()) {
-                    applyHitWithEffects(hero, base, encounter, reducible, effect)
-                }
-                return
-            }
-
-            // Single-target hit on the highest-health hero. When the target dies,
-            // the leftover (overkill) damage spills onto the next-highest hero, so
-            // one big room can wipe a whole party.
-            var remaining = base
+        /** Apply a hit that cascades its overkill to the next picked hero. */
+        private fun cascade(amount: Int, encounter: Encounter, resist: Resist, pick: () -> Hero) {
+            var remaining = amount
             while (remaining > 0 && alive.isNotEmpty()) {
-                val target = pickTarget()
+                val target = pick()
                 val before = health.getValue(target)
-                val dealt = applyHitWithEffects(target, remaining, encounter, reducible, effect)
+                val dealt = applyHitWithPoison(target, remaining, encounter, resist)
                 if (dealt <= 0) break
                 remaining = if (dealt > before) dealt - before else 0
             }
         }
 
-        /** Hit one hero and apply this room's on-hit effects; returns damage dealt. */
-        private fun applyHitWithEffects(
-            hero: Hero,
-            amount: Int,
-            encounter: Encounter,
-            reducible: Boolean,
-            effect: RoomEffect.Spec
-        ): Int {
-            val dealt = hit(hero, amount, encounter, reducible)
+        /** Hit one hero and apply this room's poison; returns damage dealt. */
+        private fun applyHitWithPoison(hero: Hero, amount: Int, encounter: Encounter, resist: Resist): Int {
+            val dealt = hit(hero, amount, encounter, resist)
             if (dealt <= 0) return 0
-            if (alive.contains(hero)) {
-                if (effect.poisonsOnHit()) poison[hero] = (poison[hero] ?: 0) + 1
-                if (effect.nextRoomDamage() > 0) {
-                    delayed[hero] = (delayed[hero] ?: 0) + effect.nextRoomDamage()
+            if (alive.contains(hero) && encounter.poisonDamage > 0) {
+                if (encounter.poisonPersists) {
+                    poison[hero] = (poison[hero] ?: 0) + encounter.poisonDamage
+                } else {
+                    delayed[hero] = (delayed[hero] ?: 0) + encounter.poisonDamage
                 }
             }
             return dealt
         }
 
         private fun recordDeathDraws(encounter: Encounter) {
-            val deck = RoomEffect.forEncounter(encounter).drawsOnDeath()
-            if (deck != null && deathsHere > 0) draws[deck] = (draws[deck] ?: 0) + deathsHere
+            if (!encounter.drawOnDeath || deathsHere <= 0) return
+            draws["room"] = (draws["room"] ?: 0) + deathsHere
+            draws["ability"] = (draws["ability"] ?: 0) + deathsHere
         }
 
-        private fun effectiveBase(encounter: Encounter): Int {
-            if (mods.isZero(roomIndex)) return 0
+        /**
+         * This encounter's three damage channels at its current level, with the
+         * boss self/room bonus, room auras and per-crawl modifiers folded into the
+         * single channel the room actually uses (its primary channel).
+         */
+        private fun channels(encounter: Encounter): Channels {
+            var lead = encounter.leadDamage
+            var all = encounter.damageAll
+            var rear = encounter.damageRear
 
-            var base = if (mods.isSet(roomIndex)) mods.setValue(roomIndex) else encounter.damage
             val bossEffect = BossEffect.forBoss(dungeon.boss)
-            base += if (encounter === dungeon.boss) {
-                bossEffect.selfBonus(bossBonus)
+            val ext = if (encounter === dungeon.boss) {
+                bossEffect.selfBonus(bossBonus) + mods.bonus(roomIndex)
             } else {
-                bossEffect.roomBonus(encounter, bossBonus)
+                bossEffect.roomBonus(encounter, bossBonus) + auraBonus(encounter) + mods.bonus(roomIndex)
             }
-            base += auraBonus(encounter)
-            return base + mods.bonus(roomIndex)
+
+            when {
+                lead > 0 || (all == 0 && rear == 0) -> {
+                    if (mods.isSet(roomIndex)) lead = mods.setValue(roomIndex)
+                    lead += ext
+                }
+                all > 0 -> {
+                    if (mods.isSet(roomIndex)) all = mods.setValue(roomIndex)
+                    all += ext
+                }
+                else -> {
+                    if (mods.isSet(roomIndex)) rear = mods.setValue(roomIndex)
+                    rear += ext
+                }
+            }
+            return Channels(lead, all, rear)
         }
 
         /** Damage other rooms' auras grant to this room (never the granter itself). */
         private fun auraBonus(encounter: Encounter): Int =
             dungeon.rooms.sumOf { room ->
-                if (room === encounter) 0 else RoomEffect.forEncounter(room).auraBonus(encounter, bossBonus)
+                if (room === encounter) 0 else RoomEffect.auraBonus(room, encounter, bossBonus)
             }
 
+        /** This room's resist mode, with an Expose-Weakness modifier forcing NO_REDUCE. */
+        private fun resistMode(encounter: Encounter): Resist {
+            if (!mods.reducible(roomIndex)) return Resist.NO_REDUCE
+            return when (encounter.roomResist) {
+                true -> Resist.NO_REDUCE
+                false -> Resist.NO_HALVE
+                null -> Resist.NORMAL
+            }
+        }
+
+        /** Whether [hero] is of the class named by a damage filter ("mage" etc.). */
+        private fun matchesFilter(hero: Hero, filter: String): Boolean =
+            hero.name.equals(filter, ignoreCase = true) ||
+                hero.id.equals("hero_$filter", ignoreCase = true)
+
         private fun grow(encounter: Encounter) {
-            if (dryRun) return // a preview must not permanently grow the room
+            if (dryRun) return // a preview must not permanently level the room
             if (deathsHere <= 0) return
-            if (!RoomEffect.forEncounter(encounter).growsOnDeath()) return
-            if (encounter is PlacedRoom) encounter.grow += deathsHere
+            if (!encounter.growsOnDeath) return
+            if (encounter is PlacedRoom) encounter.level += deathsHere
         }
 
         /** Deal damage to a hero and record it; returns the actual damage dealt. */
-        private fun hit(hero: Hero, amount: Int, encounter: Encounter, reducible: Boolean): Int {
+        private fun hit(hero: Hero, amount: Int, encounter: Encounter, resist: Resist): Int {
             if (amount <= 0) return 0
 
-            val damage = if (reducible) {
-                HeroAbility.damageTaken(hero, encounter, alive, amount)
-            } else {
-                amount
-            }
+            val damage = HeroAbility.damageTaken(hero, encounter, alive, amount, resist)
             val after = health.getValue(hero) - damage
             health[hero] = after
             val died = after <= 0

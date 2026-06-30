@@ -12,12 +12,19 @@ import kotlin.math.ceil
  *                party, gated by the bait/room-type filters. Auras stack across
  *                members. (Cleric, Mage, Rogue.)
  *   self mult  — `selfDamageMultiplier`, applied (rounded up) only to the damage
- *                the hero personally takes, unconditionally. (Barbarian: 0.5.)
+ *                the hero personally takes. (Barbarian: 0.5 — a "halving".)
  *
- * [damageTaken] applies the party auras first, then the target's self multiplier
- * last; never below zero. Mirrors docs/pseudocode.md (HeroAbility).
+ * A room's [Resist] mode gates how much of this applies to a given hit:
+ *   NORMAL    — party auras, then the self multiplier (full reduction).
+ *   NO_HALVE  — party auras only; the self multiplier (Barbarian halving) is
+ *               skipped ("damage cannot be halved").
+ *   NO_REDUCE — no reduction at all ("damage cannot be reduced"); also used for
+ *               poison ticks and any unreducible per-crawl modifier.
  */
 object HeroAbility {
+
+    /** How a hit may be reduced by hero abilities. */
+    enum class Resist { NORMAL, NO_HALVE, NO_REDUCE }
 
     /** Does [member]'s party aura apply to this encounter (both filters must hold)? */
     private fun filterMatches(member: Hero, encounter: Encounter): Boolean {
@@ -41,15 +48,23 @@ object HeroAbility {
 
     /**
      * Damage a target hero actually takes from an encounter, given the heroes
-     * still alive in its party. Every alive member's party aura applies first;
-     * the target's own self multiplier (rounded up) applies last. Never below zero.
+     * still alive in its party and the room's [resist] mode. Party auras apply
+     * first; the target's own self multiplier (rounded up) applies last. Never
+     * below zero.
      */
-    fun damageTaken(target: Hero, encounter: Encounter, aliveMembers: List<Hero>, base: Int = encounter.damage): Int {
+    fun damageTaken(
+        target: Hero,
+        encounter: Encounter,
+        aliveMembers: List<Hero>,
+        base: Int = encounter.damage,
+        resist: Resist = Resist.NORMAL
+    ): Int {
+        if (resist == Resist.NO_REDUCE) return maxOf(base, 0)
         var damage = base
         for (member in aliveMembers) {
             damage = maxOf(damage - partyReduction(member, encounter), 0)
         }
-        damage = ceil(damage * target.selfDamageMultiplier).toInt()
+        if (resist == Resist.NORMAL) damage = ceil(damage * target.selfDamageMultiplier).toInt()
         return maxOf(damage, 0)
     }
 }
