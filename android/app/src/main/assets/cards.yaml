@@ -4,7 +4,7 @@
 # of files under data/cards/ (bosses.yaml, rooms.yaml, heroes.yaml,
 # abilities.yaml); this file merges their top-level keys into one document that
 # the Android CardLibrary loads from assets. Keep it in sync with data/cards/.
-# See docs/cards.md for the schema. Bait types: glory, riches, undead, power.
+# See docs/cards.md for the schema. Bait types: glory, riches, undead, arcane.
 
 # ===== bosses (from data/cards/bosses.yaml) =====
 bosses:
@@ -13,10 +13,10 @@ bosses:
     damage: 4
     bait:
       undead: 1
-      power: 1
+      arcane: 1
     effect:
       room_bonuses:
-        - match: { bait: power, type: trap }
+        - match: { bait: arcane, type: trap }
           per_point: 1
     ability_text: "Arcane trap rooms deal +1 damage per point."
 
@@ -25,7 +25,7 @@ bosses:
     damage: 8
     bait:
       glory: 1
-      power: 1
+      arcane: 1
     effect:
       room_bonuses:
         - match: { tag: goblin }
@@ -68,7 +68,7 @@ bosses:
     damage: 2
     bait:
       undead: 1
-      power: 1
+      arcane: 1
       glory: 1
     effect:
       self_damage_per_point: 3
@@ -91,7 +91,7 @@ bosses:
     damage: 4
     bait:
       undead: 1
-      power: 1
+      arcane: 1
     effect:
       room_bonuses:
         - match: { type: creature, bait: undead }
@@ -118,7 +118,7 @@ rooms:
     type: Creature
     damage: 4
     bait:
-      power: 1
+      arcane: 1
       glory: 1
     effect:
       grows_on_death: true
@@ -173,7 +173,7 @@ rooms:
     type: Basic Monster
     damage: 5
     bait:
-      power: 1
+      arcane: 1
     description: "Will o wisps prowl the hallway"
     ability_text: ""
     copies: 16
@@ -214,7 +214,7 @@ rooms:
     type: Basic Trap
     damage: 3
     bait:
-      power: 1
+      arcane: 1
     description: "Wild magic crackles through the air"
     ability_text: ""
     copies: 24
@@ -234,7 +234,7 @@ rooms:
     type: Basic Monster
     damage: 4
     bait:
-      power: 1
+      arcane: 1
     effect:
       draw_on_death: ability
     description: "Whenever a hero dies in this room, draw an ability card"
@@ -307,8 +307,8 @@ upgrades:
     name: Arcane Sigil
     bonus_damage: 2
     bait:
-      power: 1
-    description: "Adds a power bait icon and +2 damage to a room"
+      arcane: 1
+    description: "Adds an arcane bait icon and +2 damage to a room"
     copies: 15
 
   - id: upgrade_reinforced_walls
@@ -341,10 +341,10 @@ advanced_rooms:
     type: Trap
     damage: 0
     bait:
-      power: 2
+      arcane: 2
     effect:
       party_hits:
-        - match: { preferred_bait: power }
+        - match: { preferred_bait: arcane }
           amount: 4
     description: "All Mages in the party take 4 damage that cannot be reduced"
     copies: 11
@@ -404,7 +404,7 @@ advanced_rooms:
     type: Trap
     damage: 2
     bait:
-      power: 1
+      arcane: 1
     effect:
       discard_boost: { add_damage: 4 }
     description: "Discard a room card to increase this room's damage by 4"
@@ -433,37 +433,60 @@ advanced_rooms:
     copies: 5
 
 # ===== heroes (from data/cards/heroes.yaml) =====
+# Data-driven heroes (see docs/cards.md). Level starts at floor(round/4), +1 per
+# survived crawl. maxHP = starting_hp + floor(level*hp_level_increment);
+# courage = 1 + level; party reduce = party_damage_reduction + floor(level*increment).
 heroes:
-  - id: hero_cleric
-    name: Cleric
-    health: 5
-    preferred_bait: undead
-    courage: 2
-    ability_text: "Undead deal 4 less damage to party"
-    copies: 12
-
   - id: hero_barbarian
     name: Barbarian
-    health: 8
+    icon: "🪓"
     preferred_bait: glory
-    courage: 2
-    ability_text: "All damage taken is reduced by half, rounded up."
+    starting_hp: 8
+    hp_level_increment: 2
+    self_damage_multiplier: 0.5
+    party_damage_reduction: 0
+    party_damage_reduction_level_increment: 0
+    damage_bait_filter: null
+    damage_room_type_filter: null
     copies: 12
 
   - id: hero_rogue
     name: Rogue
-    health: 6
+    icon: "🗡️"
     preferred_bait: riches
-    courage: 1
-    ability_text: "Traps deal 2 less damage to the party."
+    starting_hp: 6
+    hp_level_increment: 1
+    self_damage_multiplier: 1
+    party_damage_reduction: 2
+    party_damage_reduction_level_increment: 1
+    damage_bait_filter: null
+    damage_room_type_filter: trap
+    copies: 12
+
+  - id: hero_cleric
+    name: Cleric
+    icon: "✝️"
+    preferred_bait: undead
+    starting_hp: 5
+    hp_level_increment: 0.75
+    self_damage_multiplier: 1
+    party_damage_reduction: 4
+    party_damage_reduction_level_increment: 1
+    damage_bait_filter: undead
+    damage_room_type_filter: null
     copies: 12
 
   - id: hero_mage
     name: Mage
-    health: 4
-    preferred_bait: power
-    courage: 1
-    ability_text: "Arcane rooms deal 4 less damage to the party."
+    icon: "🔮"
+    preferred_bait: arcane
+    starting_hp: 4
+    hp_level_increment: 0.05
+    self_damage_multiplier: 1
+    party_damage_reduction: 4
+    party_damage_reduction_level_increment: 2
+    damage_bait_filter: arcane
+    damage_room_type_filter: null
     copies: 12
 
 # ===== ability_cards (from data/cards/abilities.yaml) =====

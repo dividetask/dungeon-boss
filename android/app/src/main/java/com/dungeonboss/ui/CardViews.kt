@@ -285,11 +285,11 @@ fun HandCardView(
 @Composable
 fun HeroCardView(hero: Hero, modifier: Modifier = Modifier) {
     CardFrame(Palette.HeroBg, Palette.HeroBorder, modifier) {
-        CardArtGlyph(CardArt.heroArt(hero.id))
+        CardArtGlyph(hero.icon.ifEmpty { CardArt.heroArt(hero.id) })
         CardTitle(hero.name)
-        CardType("Hero")
+        CardType(if (hero.level > 0) "Hero · Lv ${hero.level}" else "Hero")
         StatRow(
-            { Text("❤ ${hero.health}", color = Palette.Health, fontWeight = FontWeight.Bold, fontSize = 13.sp) },
+            { Text("❤ ${hero.maxHp}", color = Palette.Health, fontWeight = FontWeight.Bold, fontSize = 13.sp) },
             {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("🦁 ${hero.courage}", fontSize = 12.sp)
@@ -338,6 +338,30 @@ fun NewRoomSlot(modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center
     ) {
         Text("+ new room", color = Palette.PartyHead, fontSize = 11.sp)
+    }
+}
+
+/**
+ * One of the dungeon's 5 slots when it is empty. [active] (a room is selected to
+ * place) draws it as a tappable "+ place here" target; otherwise a faint gap.
+ */
+@Composable
+fun EmptyRoomSlot(slot: Int, active: Boolean, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .width(if (active) CARD_WIDTH else CARD_WIDTH / 2)
+            .height(CARD_HEIGHT)
+            .clip(CARD_SHAPE)
+            .background(if (active) Palette.NewSlotBg else Color.Transparent)
+            .border(2.dp, if (active) Palette.NewSlotBorder else Palette.HeroBorder, CARD_SHAPE)
+            .padding(6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            if (active) "+ slot ${slot + 1}" else "·",
+            color = Palette.PartyHead,
+            fontSize = if (active) 11.sp else 14.sp
+        )
     }
 }
 

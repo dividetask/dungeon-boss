@@ -3,18 +3,44 @@ package com.dungeonboss.game.phases
 import com.dungeonboss.game.Game
 import com.dungeonboss.game.Party
 import com.dungeonboss.game.PartyNamer
+import com.dungeonboss.game.Player
 import com.dungeonboss.model.Bait
+import com.dungeonboss.model.Hero
 
 /**
- * Recruitment phase (after the crawl). Heroes/parties that did not enter a
- * dungeon this turn (unenticed or too afraid) band together for next time:
- *   - each waiting multi-hero party recruits one waiting lone hero, and
- *   - the remaining waiting lone heroes pair off,
- * both in board (town) order, preferring a partner with a different preferred
- * bait. An odd lone hero is left out and waits alone. Merged parties persist.
+ * Recharge (after the crawl). Three things happen (was RecruitmentPhase, which is
+ * now step 2):
+ *   1. Ability cards — each living player whose dungeon was NOT attacked this
+ *      round draws one ability card.
+ *   2. Party consolidation — heroes/parties that did not enter a dungeon band
+ *      together: each waiting multi-hero party recruits one waiting lone hero, and
+ *      the remaining waiting lone heroes pair off (board order, preferring a
+ *      different preferred bait; an odd lone hero waits alone). Merged parties
+ *      persist.
+ *   3. Levelling — each hero that survived a crawl this round gains +1 level.
  */
-object RecruitmentPhase {
-    fun run(game: Game, waiting: List<Party>): Game {
+object RechargePhase {
+    fun run(
+        game: Game,
+        waiting: List<Party>,
+        attackedOwners: Set<Player>,
+        crawlSurvivors: Set<Hero>
+    ): Game {
+        // 1. Ability cards for un-attacked players.
+        game.livingPlayers()
+            .filterNot { attackedOwners.contains(it) }
+            .forEach { it.addAbilityToHand(game.abilityDeck.draw()) }
+
+        // 2. Party consolidation.
+        consolidate(game, waiting)
+
+        // 3. Levelling — survivors of a crawl grow stronger.
+        crawlSurvivors.forEach { it.level += 1 }
+
+        return game
+    }
+
+    private fun consolidate(game: Game, waiting: List<Party>) {
         val lones = waiting.filter { it.lone() }.toMutableList()
         val parties = waiting.filterNot { it.lone() }
 
@@ -36,7 +62,6 @@ object RecruitmentPhase {
             game.removePartyFromTown(partner)
         }
         // Any leftover lone hero is the odd one out and stays alone.
-        return game
     }
 
     /** Prefer a lone hero whose bait is not already represented; else the first. */

@@ -2,10 +2,12 @@ package com.dungeonboss.game
 
 import com.dungeonboss.data.CardLibrary
 import com.dungeonboss.game.phases.ArrivalPhase
-import com.dungeonboss.game.phases.BaitPhase
 import com.dungeonboss.game.phases.BuildPhase
-import com.dungeonboss.game.phases.CrawlPhase
-import com.dungeonboss.game.phases.RecruitmentPhase
+import com.dungeonboss.game.phases.DiscardPhase
+import com.dungeonboss.game.phases.DrawPhase
+import com.dungeonboss.game.phases.EnticePhase
+import com.dungeonboss.game.phases.GauntletPhase
+import com.dungeonboss.game.phases.RechargePhase
 import com.dungeonboss.game.phases.SetupPhase
 import com.dungeonboss.model.AbilityCard
 import com.dungeonboss.model.Boss
@@ -52,7 +54,7 @@ class Game(
 
     var round: Int = 0
         private set
-    var lastOutcomes: List<CrawlPhase.Outcome> = emptyList()
+    var lastOutcomes: List<GauntletPhase.Outcome> = emptyList()
         private set
     var winner: Player? = null
         private set
@@ -64,9 +66,10 @@ class Game(
     private var currentCrawl: Pair<Player, Party>? = null     // party in the pre-crawl window
     private var anyEntered = false                            // did any party enter this turn?
     private val attackedThisTurn = mutableSetOf<Player>()     // players whose dungeon was crawled
+    private val crawlSurvivors = linkedSetOf<Hero>()          // heroes that survived a crawl this round
     private var crawlModifiers = CrawlModifiers()             // per-crawl ability/boost modifiers
-    private var waitingParties = mutableListOf<Party>()       // parties that did not enter (Recruitment)
-    private var undoableDiscard: Pair<Player, BuildCard>? = null
+    private var waitingParties = mutableListOf<Party>()       // parties that did not enter (Recharge)
+    private var undoableDiscard: UndoableDiscard? = null
     // The human's most recent boss pick: (player, chosen, discarded) — for undo.
     private var lastBossChoice: Triple<Player, Boss, List<Boss>>? = null
     private val bossCandidates = mutableMapOf<Player, List<Boss>>()
@@ -78,9 +81,16 @@ class Game(
     /** A captured build placement so it can be fully reversed (see [undoPlacement]). */
     private class UndoablePlacement(
         val player: Player,
-        val card: BuildCard,            // the card played (returned to hand on undo)
-        val rooms: List<PlacedRoom>,    // a copy of the dungeon's rooms before placing
-        val discarded: List<BuildCard>  // cards place() pushed to the deck (reclaimed on undo)
+        val card: BuildCard,                 // the card played (returned to hand on undo)
+        val slots: List<PlacedRoom?>,        // a copy of the dungeon's 5 slots before placing
+        val discarded: List<BuildCard>       // cards place() pushed to the deck (reclaimed on undo)
+    )
+
+    /** A captured discard+draw so it can be reversed (see [undoDiscard]). */
+    private class UndoableDiscard(
+        val player: Player,
+        val discarded: List<BuildCard>,      // cards discarded (reclaimed to hand on undo)
+        val drawn: List<BuildCard>           // cards the Draw phase added (returned to deck on undo)
     )
 
     /** A captured ability play so it can be reversed (see [undoAbility]). */
@@ -121,9 +131,10 @@ class Game(
         undoablePlacement = null
         undoableAbilities.clear()
         ArrivalPhase.run(this)
-        BuildPhase.drawForEach(this)
+        // Discard (0–2, optional) then Build, per living player. The Draw phase runs
+        // when each player's discard resolves (draw = 1 + cards discarded).
         livingPlayers().forEach { p ->
-            enqueue(DecisionKind.DISCARD_ROOM, p, p.roomHand, mandatory = true)
+            enqueue(DecisionKind.DISCARD_ROOMS, p, p.roomHand, allowSkip = true)
             enqueue(DecisionKind.BUILD_ROOM, p, p.roomHand, allowSkip = true)
         }
         stage = Stage.BUILDING
@@ -143,8 +154,9 @@ class Game(
         undoablePlacement = null // a crawl is resolving; the build can no longer be undone
         undoableAbilities.clear() // ability plays apply to this crawl; no undo after it resolves
         agentPreCrawl(player)
-        val outcome = CrawlPhase.resolveParty(this, player, party, crawlModifiers)
+        val outcome = GauntletPhase.resolveParty(this, player, party, crawlModifiers)
         lastOutcomes = listOf(outcome)
+        crawlSurvivors.addAll(outcome.result.survivors) // survivors level up in Recharge
         applyDeathDraws(player, outcome.result)
         currentCrawl = null
 
@@ -281,10 +293,11 @@ class Game(
         decisions.isEmpty() && currentCrawl == null && stage == Stage.READY
 
     /**
-     * Apply the player's choice to the current decision. [choiceId] is a card id,
-     * or null to skip (only allowed for skippable decisions). [target] is used
-     * only by build decisions ("new" or a room index). After applying, any
-     * following agent decisions resolve on their own.
+     * Apply the player's choice to the current decision. [choiceId] is a card id
+     * (or a comma-joined list for DISCARD_ROOMS), or null to skip (only allowed for
+     * skippable decisions). [target] is used by placement decisions: a slot index
+     * (0..4), or "upgrade:<slot>" to spend a room card upgrading a placed room.
+     * After applying, any following agent decisions resolve on their own.
      */
     fun decide(choiceId: String?, target: Any? = null): Game {
         require(decisions.isNotEmpty()) { "no pending decision" }
@@ -302,22 +315,26 @@ class Game(
     /** Players still in the game. */
     fun livingPlayers(): List<Player> = players.filterNot { Scoreboard.eliminated(it) }
 
-    /** True while the human's most recent mandatory discard can still be taken back. */
+    /** True while the human's most recent discard can still be taken back. */
     fun canUndoDiscard(): Boolean {
-        val (player, _) = undoableDiscard ?: return false
+        val u = undoableDiscard ?: return false
         val decision = currentDecision() ?: return false
-        return decision.kind == DecisionKind.BUILD_ROOM && decision.player === player
+        return decision.kind == DecisionKind.BUILD_ROOM && decision.player === u.player
     }
 
     /**
-     * Return the most recently discarded room card to its owner's hand and
-     * re-prompt the discard. No-op unless an undo is currently available.
+     * Reverse the most recent discard+draw: return the cards the Draw phase added
+     * to the deck, put the discarded cards back in hand, and re-prompt the discard.
+     * No-op unless an undo is currently available.
      */
     fun undoDiscard(): Game {
         if (!canUndoDiscard()) return this
-        val (player, card) = undoableDiscard!!
-        roomDeck.reclaim(card)?.let { player.addRoomToHand(it) }
-        decisions.addFirst(Decision(DecisionKind.DISCARD_ROOM, player, player.roomHand.toList(), false))
+        val u = undoableDiscard!!
+        // First take the drawn cards back out of hand and return them to the deck.
+        u.drawn.forEach { card -> u.player.takeRoomFromHand(card.id)?.let { roomDeck.discard(it) } }
+        // Then reclaim the discarded cards from the deck back into hand.
+        u.discarded.forEach { card -> roomDeck.reclaim(card)?.let { u.player.addRoomToHand(it) } }
+        decisions.addFirst(Decision(DecisionKind.DISCARD_ROOMS, u.player, u.player.roomHand.toList(), allowSkip = true))
         undoableDiscard = null
         return this
     }
@@ -357,7 +374,7 @@ class Game(
     private fun advanceToNextCrawl() {
         while (crawlQueue.isNotEmpty()) {
             val party = crawlQueue.removeAt(0)
-            val player = BaitPhase.targetFor(this, party)
+            val player = EnticePhase.targetFor(this, party)
             if (player != null) {
                 currentCrawl = player to party
                 crawlModifiers = CrawlModifiers()
@@ -379,13 +396,11 @@ class Game(
     private fun finishTurn() {
         undoablePlacement = null
         undoableAbilities.clear()
-        // Every living player whose dungeon was NOT attacked this turn draws an
-        // ability card (so a quiet/unenticing dungeon is rewarded even when other
-        // players were attacked).
-        livingPlayers().filterNot { attackedThisTurn.contains(it) }
-            .forEach { it.addAbilityToHand(abilityDeck.draw()) }
-        RecruitmentPhase.run(this, waitingParties)
+        // Recharge: un-attacked players draw an ability card, waiting parties
+        // consolidate, and every hero that survived a crawl this round levels up.
+        RechargePhase.run(this, waitingParties, attackedThisTurn, crawlSurvivors)
         waitingParties = mutableListOf()
+        crawlSurvivors.clear()
         stage = Stage.READY
     }
 
@@ -416,7 +431,7 @@ class Game(
         }
         // A discard becomes the new undoable action; any other choice closes the
         // window on the previous discard.
-        if (decision.kind != DecisionKind.DISCARD_ROOM) undoableDiscard = null
+        if (decision.kind != DecisionKind.DISCARD_ROOMS) undoableDiscard = null
         apply(decision, choiceId, target)
         resolveIfIdle()
     }
@@ -444,18 +459,24 @@ class Game(
                 SetupPhase.chooseBoss(this, decision.player, choiceId!!)
             }
             DecisionKind.PLACE_FIRST_ROOM -> {
-                SetupPhase.placeFirstRoom(decision.player, choiceId!!)
+                SetupPhase.placeFirstRoom(decision.player, choiceId!!, slotOf(target))
                 if (lastBossChoice?.first === decision.player) lastBossChoice = null
             }
-            DecisionKind.DISCARD_ROOM ->
-                undoableDiscard = decision.player to BuildPhase.discard(this, decision.player, choiceId!!)
+            DecisionKind.DISCARD_ROOMS -> {
+                val player = decision.player
+                val ids = parseIds(choiceId)
+                val discarded = DiscardPhase.discard(this, player, ids)
+                // Draw 1 + (cards discarded), capturing the drawn cards for undo.
+                val drawn = drawRoomsFor(player, DrawPhase.BASE_DRAW + discarded.size)
+                undoableDiscard = UndoableDiscard(player, discarded, drawn)
+            }
             DecisionKind.BUILD_ROOM -> {
                 val player = decision.player
                 // Capture a human placement so it can be undone before any crawl.
                 // Agent builds run after the human's and must not clear it.
                 if (!automated(player) && choiceId != null) {
                     val played = player.roomHand.firstOrNull { it.id == choiceId }
-                    val before = snapshotRooms(player.dungeon!!)
+                    val before = player.dungeon!!.snapshotSlots()
                     val discarded = BuildPhase.place(this, player, choiceId, target)
                     if (played != null) undoablePlacement = UndoablePlacement(player, played, before, discarded)
                 } else {
@@ -465,9 +486,16 @@ class Game(
         }
     }
 
-    /** Deep copy of a dungeon's rooms (base + upgrade + grow), for placement undo. */
-    private fun snapshotRooms(d: Dungeon): List<PlacedRoom> =
-        d.rooms.map { src -> PlacedRoom(src.baseRoom, src.upgrade).also { it.grow = src.grow } }
+    /** Parse a comma-joined choice id list (DISCARD_ROOMS) into individual ids. */
+    private fun parseIds(choiceId: String?): List<String> =
+        choiceId?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+
+    /** A target slot index (0..4), accepting an Int, an "upgrade:N" string, or null (→ 0). */
+    private fun slotOf(target: Any?): Int = when (target) {
+        null -> 0
+        is Int -> target
+        else -> target.toString().substringAfter(':', target.toString()).trim().toIntOrNull() ?: 0
+    }
 
     /** True while the human's most recent room placement can still be taken back. */
     fun canUndoPlacement(): Boolean {
@@ -484,7 +512,7 @@ class Game(
         if (!canUndoPlacement()) return this
         val p = undoablePlacement!!
         val dungeon = p.player.dungeon ?: return this
-        dungeon.restoreRooms(p.rooms)                 // dungeon back to before the placement
+        dungeon.restoreSlots(p.slots)                 // dungeon back to before the placement
         p.discarded.forEach { roomDeck.reclaim(it) }  // pull its discards back out of the deck
         p.player.addRoomToHand(p.card)                // return the played card to hand
         // Roll the turn back to building and re-prompt this player's build choice;
@@ -495,6 +523,7 @@ class Game(
         waitingParties = mutableListOf()
         anyEntered = false
         attackedThisTurn.clear()
+        crawlSurvivors.clear()
         lastOutcomes = emptyList()
         decisions.clear()
         decisions.addFirst(Decision(DecisionKind.BUILD_ROOM, p.player, p.player.roomHand, allowSkip = true))
@@ -541,12 +570,13 @@ class Game(
         when (stage) {
             Stage.SETUP -> stage = Stage.READY
             Stage.BUILDING -> {
-                // Bait + Crawl combined: evaluate parties for entry one at a time.
+                // Entice + Gauntlet combined: evaluate parties for entry one at a time.
                 crawlQueue.clear()
                 crawlQueue.addAll(town)
                 waitingParties = mutableListOf()
                 anyEntered = false
                 attackedThisTurn.clear()
+                crawlSurvivors.clear()
                 stage = Stage.CRAWLING
                 advanceToNextCrawl()
             }

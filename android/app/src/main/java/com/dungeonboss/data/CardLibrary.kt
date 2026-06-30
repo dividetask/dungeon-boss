@@ -97,9 +97,16 @@ class CardLibrary(
         private fun buildHero(c: Map<String, Any?>) = Hero(
             id = c.req("id"),
             name = c.req("name"),
-            health = (c["health"] as Number).toInt(),
             preferredBait = Bait.normalize(c.req("preferred_bait")),
-            courage = (c["courage"] as? Number)?.toInt() ?: 1,
+            startingHp = (c["starting_hp"] as Number).toInt(),
+            hpLevelIncrement = (c["hp_level_increment"] as? Number)?.toDouble() ?: 0.0,
+            selfDamageMultiplier = (c["self_damage_multiplier"] as? Number)?.toDouble() ?: 1.0,
+            partyDamageReduction = (c["party_damage_reduction"] as? Number)?.toInt() ?: 0,
+            partyDamageReductionLevelIncrement =
+                (c["party_damage_reduction_level_increment"] as? Number)?.toDouble() ?: 0.0,
+            damageBaitFilter = c["damage_bait_filter"]?.let { Bait.normalize(it) },
+            damageRoomTypeFilter = c["damage_room_type_filter"]?.toString()?.lowercase(),
+            icon = c["icon"]?.toString() ?: "",
             tags = tagsOf(c["tags"]),
             abilityText = c["ability_text"]?.toString() ?: ""
         )

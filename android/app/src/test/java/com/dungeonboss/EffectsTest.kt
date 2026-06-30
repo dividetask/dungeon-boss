@@ -24,7 +24,7 @@ import org.junit.Test
 class EffectsTest {
 
     private fun hero(health: Int, bait: Bait = Bait.GLORY, id: String = "h") =
-        Hero(id = id, name = id, health = health, preferredBait = bait)
+        Hero(id = id, name = id, preferredBait = bait, startingHp = health)
 
     private fun room(
         damage: Int,
@@ -38,7 +38,7 @@ class EffectsTest {
 
     private fun dungeon(boss: Boss, rooms: List<Room>): Dungeon {
         val d = Dungeon(boss)
-        rooms.asReversed().forEach { d.addRoomToLeft(it) } // listed order = left->right
+        rooms.forEachIndexed { i, r -> d.placeRoom(i, r) } // listed order = left->right (slots 0..)
         return d
     }
 
@@ -157,17 +157,21 @@ class EffectsTest {
         // to everyone — and an undamaged hero is never poisoned.
         val gas = room(2, type = "Trap", effect = mapOf("damages_all" to true, "poisons_on_hit" to true))
         val d = dungeon(boss(0), listOf(gas))
-        val rogue = hero(100, id = "hero_rogue")
+        // Rogue: party-wide trap reduction of 2 (data-driven).
+        val rogue = Hero(
+            id = "hero_rogue", name = "Rogue", preferredBait = Bait.RICHES, startingHp = 100,
+            partyDamageReduction = 2, damageRoomTypeFilter = "trap"
+        )
         val ally = hero(100, id = "ally")
         val res = PartyCrawlResolver.resolve(Party(listOf(rogue, ally)), d)
         assertTrue(res.log.none { it.damage > 0 }) // nobody damaged, nobody poisoned
     }
 
     @Test
-    fun antimagicPartyHitsOnlyPowerHeroes() {
+    fun antimagicPartyHitsOnlyArcaneHeroes() {
         val antimagic = room(0, type = "Trap",
-            effect = mapOf("party_hits" to listOf(mapOf("match" to mapOf("preferred_bait" to "power"), "amount" to 4))))
-        val mage = hero(4, Bait.POWER, id = "hero_mage")
+            effect = mapOf("party_hits" to listOf(mapOf("match" to mapOf("preferred_bait" to "arcane"), "amount" to 4))))
+        val mage = hero(4, Bait.ARCANE, id = "hero_mage")
         val fighter = hero(8, Bait.GLORY, id = "f")
         val d = dungeon(boss(0), listOf(antimagic))
         val res = PartyCrawlResolver.resolve(Party(listOf(mage, fighter)), d)
@@ -208,12 +212,19 @@ class EffectsTest {
 
     @Test
     fun modifierUnreducibleBypassesBarbarianHalving() {
-        val barb = hero(20, Bait.GLORY, id = "hero_barbarian")
+        // Barbarian: self-damage multiplier 0.5 (rounded up), data-driven.
+        val barb = Hero(
+            id = "hero_barbarian", name = "Barbarian", preferredBait = Bait.GLORY,
+            startingHp = 20, selfDamageMultiplier = 0.5
+        )
         val d = dungeon(boss(0), listOf(room(6)))
         val plain = PartyCrawlResolver.resolve(Party(listOf(barb)), d)
         assertEquals(3, plain.log.first().damage) // halved rounded up
 
-        val barb2 = hero(20, Bait.GLORY, id = "hero_barbarian")
+        val barb2 = Hero(
+            id = "hero_barbarian", name = "Barbarian", preferredBait = Bait.GLORY,
+            startingHp = 20, selfDamageMultiplier = 0.5
+        )
         val d2 = dungeon(boss(0), listOf(room(6)))
         val mods = CrawlModifiers().apply { unreducibleMark(0) }
         val full = PartyCrawlResolver.resolve(Party(listOf(barb2)), d2, modifiers = mods)
@@ -263,10 +274,10 @@ class EffectsTest {
 
     @Test
     fun baitIconsShareAndContain() {
-        val power2 = BaitIcons(mapOf("power" to 2))
-        val powerRiches = BaitIcons(mapOf("power" to 1, "riches" to 1))
-        assertTrue(powerRiches.shares(power2))
-        assertTrue(powerRiches.contains(BaitIcons(mapOf("power" to 1))))
-        assertFalse(powerRiches.contains(power2)) // only one power icon
+        val arcane2 = BaitIcons(mapOf("arcane" to 2))
+        val arcaneRiches = BaitIcons(mapOf("arcane" to 1, "riches" to 1))
+        assertTrue(arcaneRiches.shares(arcane2))
+        assertTrue(arcaneRiches.contains(BaitIcons(mapOf("arcane" to 1))))
+        assertFalse(arcaneRiches.contains(arcane2)) // only one arcane icon
     }
 }

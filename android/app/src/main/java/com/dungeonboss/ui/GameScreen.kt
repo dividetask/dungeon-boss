@@ -54,8 +54,9 @@ import com.dungeonboss.game.Decision
 import com.dungeonboss.game.DecisionKind
 import com.dungeonboss.game.EncounterDamage
 import com.dungeonboss.game.Game
-import com.dungeonboss.game.phases.BaitPhase
-import com.dungeonboss.game.phases.CrawlPhase
+import com.dungeonboss.game.phases.DiscardPhase
+import com.dungeonboss.game.phases.EnticePhase
+import com.dungeonboss.game.phases.GauntletPhase
 import com.dungeonboss.game.Party
 import com.dungeonboss.game.PartyCrawlResolver
 import com.dungeonboss.game.Player
@@ -90,6 +91,8 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
     val viewed = remember { mutableStateOf(humanName) }
     val decision = game?.currentDecision()
     var selection by remember(decision) { mutableStateOf<Selection?>(null) }
+    // Room ids the human has tapped to discard this Discard phase (0–2).
+    var discardSelection by remember(decision) { mutableStateOf<Set<String>>(emptySet()) }
 
     // A card whose full details are being shown in a popup (ℹ button), or null.
     var detailCard by remember { mutableStateOf<Any?>(null) }
@@ -120,7 +123,7 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
         activeIndex.value = null
         heroHp.clear(); deadSet.clear()
         val participants = outcome.result.participants
-        participants.forEachIndexed { i, h -> heroHp[i] = h.health }
+        participants.forEachIndexed { i, h -> heroHp[i] = h.maxHp }
         viewed.value = outcome.player.name
         delay(600)
 
@@ -197,6 +200,14 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         selection = selection,
                         onSelect = { sel -> selection = if (selection?.cardId == sel.cardId) null else sel },
                         onDecide = { choice, target -> vm.decide(choice, target) },
+                        discardSelection = discardSelection,
+                        onToggleDiscard = { id ->
+                            discardSelection = when {
+                                discardSelection.contains(id) -> discardSelection - id
+                                discardSelection.size < DiscardPhase.MAX_DISCARDS -> discardSelection + id
+                                else -> discardSelection // already at the 2-card limit
+                            }
+                        },
                         pendingAbility = pendingAbility,
                         onPickAbility = { card ->
                             when {
@@ -242,7 +253,8 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         onContinueQuiet = { vm.finishQuietRound() },
                         onCancelAbility = { pendingAbility = null },
                         pendingAbility = pendingAbility,
-                        pendingBoostRoom = pendingBoostRoom
+                        pendingBoostRoom = pendingBoostRoom,
+                        discardSelection = discardSelection
                     )
                 }
             }
@@ -368,6 +380,8 @@ private fun GameBody(
     selection: Selection?,
     onSelect: (Selection) -> Unit,
     onDecide: (String?, Any?) -> Unit,
+    discardSelection: Set<String>,
+    onToggleDiscard: (String) -> Unit,
     pendingAbility: AbilityCard?,
     onPickAbility: (AbilityCard) -> Unit,
     onTargetRoom: (Int) -> Unit,
@@ -394,7 +408,7 @@ private fun GameBody(
     if (game.over()) GameOverBanner(tick, game, onNewGame)
 
     val choosingFirst = decision?.kind == DecisionKind.PLACE_FIRST_ROOM && decision.player == human
-    val choosingDiscard = decision?.kind == DecisionKind.DISCARD_ROOM && decision.player == human
+    val choosingDiscard = decision?.kind == DecisionKind.DISCARD_ROOMS && decision.player == human
     val choosingBuild = decision?.kind == DecisionKind.BUILD_ROOM && decision.player == human
     val boostingHere = preCrawl && crawlOwner == human && pendingBoostRoom != null
 
@@ -423,15 +437,18 @@ private fun GameBody(
                         human.roomHand.groupBy { it.id }.values.forEach { group ->
                             val card = group.first()
                             val isUpgrade = card is Upgrade
+                            // First room and Build both pick a card, then tap a slot.
+                            val selectableForBuild = choosingBuild || (choosingFirst && card is Room && !card.advanced)
                             val modifier = when {
                                 boostingHere -> Modifier.clickable { onBoostWithCard(card.id) }
-                                choosingDiscard || (choosingFirst && card is Room && !card.advanced) ->
-                                    Modifier.clickable { onDecide(card.id, null) }
-                                choosingBuild -> Modifier.clickable { onSelect(Selection(card.id, isUpgrade)) }
+                                choosingDiscard -> Modifier.clickable { onToggleDiscard(card.id) }
+                                selectableForBuild -> Modifier.clickable { onSelect(Selection(card.id, isUpgrade)) }
                                 else -> Modifier
                             }
+                            val highlighted = selection?.cardId == card.id ||
+                                (choosingDiscard && discardSelection.contains(card.id))
                             WithCount(group.size) {
-                                HandCardView(card, modifier, highlighted = selection?.cardId == card.id,
+                                HandCardView(card, modifier, highlighted = highlighted,
                                     onInfo = { onShowDetail(card) })
                             }
                         }
@@ -471,38 +488,47 @@ private fun GameBody(
     val viewedPlayer = game.players.first { it.name == viewedName }
     val outcome = game.lastOutcomes.firstOrNull()
     val isCrawledHere = outcome != null && outcome.player.name == viewedName
-    val buildingHere = choosingBuild && viewedPlayer == human
+    // First-room placement and Build both place into a slot on your own dungeon.
+    val placingHere = (choosingBuild || choosingFirst) && viewedPlayer == human
 
-    // The selected build card (if any), used to gate where it may be placed:
-    //   basic room    → a new entrance slot, or replace any room
-    //   upgrade       → attach to any room (no new slot)
-    //   advanced room → replace only a room that shares one of its bait icons
-    val selectedCard = if (buildingHere && selection != null) {
+    // The selected card (if any), used to gate which slot it may go in:
+    //   basic room    → any slot (empty fills, occupied replaces)
+    //   advanced room → an empty slot, or replace a room sharing a bait icon
+    //   upgrade card  → attach to any occupied slot
+    val selectedCard = if (placingHere && selection != null) {
         human.roomHand.firstOrNull { it.id == selection.cardId }
     } else null
-    val selectedBasicRoom = selectedCard is Room && !selectedCard.advanced
+    val selectedRoom = selectedCard as? Room
 
-    fun canPlaceOnRoom(i: Int): Boolean {
+    // Whether the selected card may be PLACED into slot [slot] (empty or occupied).
+    fun canPlaceInSlot(slot: Int): Boolean {
         val card = selectedCard ?: return false
-        return if (card is Room && card.advanced) {
-            viewedPlayer.dungeon?.rooms?.getOrNull(i)?.bait?.shares(card.bait) == true
-        } else true // basic room replaces any; upgrade attaches to any
+        val occupant = viewedPlayer.dungeon?.slots?.getOrNull(slot)
+        return when {
+            card is Upgrade -> occupant != null                       // attach to a room
+            card is Room && card.advanced ->
+                occupant == null || occupant.bait.shares(card.bait)   // empty, or bait-share replace
+            card is Room -> true                                       // basic: any slot
+            else -> false
+        }
     }
 
-    // Decide what tapping a room/slot does for the viewed dungeon.
-    val targetingAbilityHere = pendingAbility != null && crawlOwner == viewedPlayer
-    val roomClick: ((Int) -> Unit)? = when {
-        targetingAbilityHere -> { i -> onTargetRoom(i) }
-        buildingHere && selection != null -> { i -> if (canPlaceOnRoom(i)) onDecide(selection.cardId, i) }
-        else -> null
-    }
-    // Only a basic room may use the "add new" entrance slot.
-    val newSlotClick: (() -> Unit)? =
-        if (buildingHere && selection != null && selectedBasicRoom && viewedPlayer.dungeon?.isFull() == false) {
-            { onDecide(selection.cardId, "new") }
+    // Tapping a slot during build/first places (or replaces / attaches) there.
+    val slotPlace: ((Int) -> Unit)? =
+        if (placingHere && selection != null) {
+            { slot -> if (canPlaceInSlot(slot)) onDecide(selection.cardId, slot) }
         } else null
-    // Boostable rooms (owner only, before any per-room boost), shown when not
-    // already targeting an ability or choosing a discard card.
+    // A room card (not an upgrade card) may instead be SPENT to upgrade an
+    // occupied room: grants its bait + a room level ("upgrade:<slot>").
+    val slotUpgrade: ((Int) -> Unit)? =
+        if (placingHere && selectedRoom != null) {
+            { slot -> onDecide(selection!!.cardId, "upgrade:$slot") }
+        } else null
+    // Ability targeting taps an ENCOUNTER (occupied-room) index, not a slot.
+    val targetingAbilityHere = pendingAbility != null && crawlOwner == viewedPlayer
+    val encounterClick: ((Int) -> Unit)? = if (targetingAbilityHere) { i -> onTargetRoom(i) } else null
+
+    // Boostable rooms (owner only, before any per-room boost) — encounter indices.
     val boostRooms: Set<Int> =
         if (preCrawl && crawlOwner == human && viewedPlayer == human && pendingAbility == null && pendingBoostRoom == null) {
             human.dungeon?.rooms?.indices?.filter {
@@ -521,8 +547,10 @@ private fun GameBody(
             player = viewedPlayer,
             decision = decision,
             onChooseBoss = { bossId -> onDecide(bossId, null) },
-            roomClick = roomClick,
-            newSlotClick = newSlotClick,
+            slotPlace = slotPlace,
+            canPlaceInSlot = if (placingHere && selection != null) ::canPlaceInSlot else null,
+            slotUpgrade = slotUpgrade,
+            encounterClick = encounterClick,
             boostRooms = boostRooms,
             onBoost = onChooseBoostRoom,
             onShowDetail = onShowDetail,
@@ -539,7 +567,7 @@ private fun GameBody(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             outcome.result.participants.forEachIndexed { i, hero ->
-                HeroChip(hero.name, heroHp[i] ?: hero.health, hero.health, deadSet.contains(i))
+                HeroChip(hero.name, heroHp[i] ?: hero.maxHp, hero.maxHp, deadSet.contains(i))
             }
         }
     }
@@ -552,7 +580,7 @@ private fun GameBody(
  * Mirrors the web app's "Crawl breakdown" section.
  */
 @Composable
-private fun CrawlBreakdownDialog(outcomes: List<CrawlPhase.Outcome>, onDismiss: () -> Unit) {
+private fun CrawlBreakdownDialog(outcomes: List<GauntletPhase.Outcome>, onDismiss: () -> Unit) {
     // Bound to the window so the table scrolls rather than clipping in landscape.
     val maxH = (LocalConfiguration.current.screenHeightDp * 0.85f).dp
     Dialog(onDismissRequest = onDismiss) {
@@ -585,7 +613,7 @@ private fun CrawlBreakdownDialog(outcomes: List<CrawlPhase.Outcome>, onDismiss: 
 
 /** One party's room-by-room breakdown table within the breakdown dialog. */
 @Composable
-private fun CrawlBreakdownBlock(outcome: CrawlPhase.Outcome) {
+private fun CrawlBreakdownBlock(outcome: GauntletPhase.Outcome) {
     val result = outcome.result
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(
@@ -669,7 +697,7 @@ private fun TownSection(game: Game, onInspect: (Hero) -> Unit) {
 private data class Lure(val dungeon: String?, val timid: Boolean)
 
 private fun lureTarget(game: Game, party: Party): Lure {
-    val player = BaitPhase.mostEnticingPlayer(game, party) ?: return Lure(null, false)
+    val player = EnticePhase.mostEnticingPlayer(game, party) ?: return Lure(null, false)
     val name = player.dungeon?.boss?.name ?: player.name
     return Lure(name, party.courage() < player.points)
 }
@@ -876,9 +904,11 @@ private fun DungeonBoard(
     player: Player,
     decision: Decision?,
     onChooseBoss: (String) -> Unit,
-    roomClick: ((Int) -> Unit)?,
-    newSlotClick: (() -> Unit)?,
-    boostRooms: Set<Int>,
+    slotPlace: ((Int) -> Unit)?,         // build/first: place into a SLOT (0..4)
+    canPlaceInSlot: ((Int) -> Boolean)?, // build/first: is the selected card valid for this slot?
+    slotUpgrade: ((Int) -> Unit)?,       // build: spend a room card to upgrade the SLOT's room
+    encounterClick: ((Int) -> Unit)?,    // ability targeting: tap an ENCOUNTER (occupied) index
+    boostRooms: Set<Int>,                // encounter indices
     onBoost: (Int) -> Unit,
     onShowDetail: (Any) -> Unit,
     activeIndex: Int?,
@@ -917,31 +947,51 @@ private fun DungeonBoard(
                 // Per-crawl ability/boost modifiers apply only to the dungeon whose
                 // party is in the pre-crawl window — fold them into its damage display.
                 val mods = if (game.nextCrawl()?.first === player) game.crawlMods() else null
-                if (newSlotClick != null) {
-                    NewRoomSlot(Modifier.clickable { newSlotClick() })
-                }
-                dungeon.rooms.forEachIndexed { i, placed ->
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        val mod = if (roomClick != null) Modifier.clickable { roomClick(i) } else Modifier
-                        RoomCardView(placed, mod, highlighted = activeIndex == i,
-                            parts = EncounterDamage.parts(dungeon, placed, points, mods, i),
-                            onInfo = { onShowDetail(placed) })
-                        if (boostRooms.contains(i)) {
-                            OutlinedButton(onClick = { onBoost(i) }) {
-                                Text("Boost", fontSize = 11.sp)
+                // Render all 5 slots in order; empties show as gaps (tappable while
+                // building). An occupied slot's ENCOUNTER index is its position among
+                // the occupied rooms (what the crawl/boost/damage code uses).
+                var encounterIndex = 0
+                dungeon.slots.forEachIndexed { slot, placed ->
+                    if (placed == null) {
+                        val placeable = slotPlace != null && canPlaceInSlot?.invoke(slot) == true
+                        val mod = if (placeable) Modifier.clickable { slotPlace!!(slot) } else Modifier
+                        EmptyRoomSlot(slot, active = placeable, modifier = mod)
+                    } else {
+                        val ei = encounterIndex
+                        encounterIndex += 1
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            val mod = when {
+                                slotPlace != null && canPlaceInSlot?.invoke(slot) == true ->
+                                    Modifier.clickable { slotPlace(slot) } // place/replace/attach
+                                encounterClick != null -> Modifier.clickable { encounterClick(ei) }
+                                else -> Modifier
                             }
+                            RoomCardView(placed, mod, highlighted = activeIndex == ei,
+                                parts = EncounterDamage.parts(dungeon, placed, points, mods, ei),
+                                onInfo = { onShowDetail(placed) })
+                            if (slotUpgrade != null) {
+                                OutlinedButton(onClick = { slotUpgrade(slot) }) {
+                                    Text("Upgrade", fontSize = 11.sp)
+                                }
+                            }
+                            if (boostRooms.contains(ei)) {
+                                OutlinedButton(onClick = { onBoost(ei) }) {
+                                    Text("Boost", fontSize = 11.sp)
+                                }
+                            }
+                            DeathMarkers(prediction, ei)
                         }
-                        DeathMarkers(prediction, i)
                     }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     // Label only opponents (P2/P3/…); your own boss needs no marker.
                     val ownerLabel = if (game.automated(player)) "P${game.players.indexOf(player) + 1}" else null
-                    BossCardView(dungeon.boss, Modifier, highlighted = activeIndex == dungeon.rooms.size,
-                        parts = EncounterDamage.parts(dungeon, dungeon.boss, points, mods, dungeon.rooms.size),
+                    val bossIndex = dungeon.rooms.size
+                    BossCardView(dungeon.boss, Modifier, highlighted = activeIndex == bossIndex,
+                        parts = EncounterDamage.parts(dungeon, dungeon.boss, points, mods, bossIndex),
                         ownerLabel = ownerLabel,
                         onInfo = { onShowDetail(dungeon.boss) })
-                    DeathMarkers(prediction, dungeon.rooms.size)
+                    DeathMarkers(prediction, bossIndex)
                     SurvivorMarkers(prediction)
                 }
             }
@@ -1058,7 +1108,8 @@ private fun AdvanceBar(
     onContinueQuiet: () -> Unit,
     onCancelAbility: () -> Unit,
     pendingAbility: AbilityCard?,
-    pendingBoostRoom: Int?
+    pendingBoostRoom: Int?,
+    discardSelection: Set<String> = emptySet()
 ) {
     val decision = game.currentDecision()
     val human = game.players.first { it.name == humanName }
@@ -1073,8 +1124,13 @@ private fun AdvanceBar(
         pendingAbility != null -> Triple("Tap a room to target ${pendingAbility.name}", false, noop)
         pendingBoostRoom != null -> Triple("Tap a hand card to boost the room", false, noop)
         mineKind == DecisionKind.CHOOSE_BOSS -> Triple("Tap a boss to choose it", false, noop)
-        mineKind == DecisionKind.PLACE_FIRST_ROOM -> Triple("Tap a room to place by your boss", false, noop)
-        mineKind == DecisionKind.DISCARD_ROOM -> Triple("Tap a room to discard", false, noop)
+        mineKind == DecisionKind.PLACE_FIRST_ROOM -> Triple("Tap a room, then a slot", false, noop)
+        mineKind == DecisionKind.DISCARD_ROOMS -> {
+            val n = discardSelection.size
+            val label = if (n == 0) "Discard nothing ▶" else "Discard $n ▶"
+            // 0–2 cards; confirm sends the comma-joined ids (null = discard nothing).
+            Triple(label, true, { onDecide(discardSelection.joinToString(",").ifEmpty { null }, null) })
+        }
         mineKind == DecisionKind.BUILD_ROOM -> Triple("Build nothing", true, { onDecide(null, null) })
         game.quiet() -> Triple("Continue ▶", true, onContinueQuiet)
         game.crawling() && game.nextCrawl() != null -> Triple("Send ▶", true, onSend)
@@ -1195,10 +1251,17 @@ private fun CardDetailDialog(card: Any, onDismiss: () -> Unit) {
                         DetailBody(card.text)
                     }
                     is Hero -> {
-                        DetailHeader(CardArt.heroArt(card.id), card.name, "Hero")
-                        DetailStat("Health", card.health.toString())
+                        DetailHeader(card.icon.ifEmpty { CardArt.heroArt(card.id) }, card.name,
+                            if (card.level > 0) "Hero · Lv ${card.level}" else "Hero")
+                        DetailStat("HP", card.maxHp.toString())
                         DetailStat("Courage", card.courage.toString())
                         DetailStat("Preferred bait", CardArt.baitEmoji[card.preferredBait].orEmpty())
+                        if (card.partyDamageReduction > 0 || card.partyDamageReductionLevelIncrement > 0) {
+                            DetailStat("Party reduction", card.partyReduction.toString())
+                        }
+                        if (card.selfDamageMultiplier != 1.0) {
+                            DetailStat("Self damage ×", card.selfDamageMultiplier.toString())
+                        }
                         DetailBody(card.abilityText)
                     }
                 }

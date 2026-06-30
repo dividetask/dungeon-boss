@@ -7,12 +7,11 @@ import com.dungeonboss.game.Party
 import com.dungeonboss.game.PartyCrawlResolver
 import com.dungeonboss.game.Player
 import com.dungeonboss.game.Scoreboard
-import com.dungeonboss.game.phases.BaitPhase
+import com.dungeonboss.game.phases.EnticePhase
 import com.dungeonboss.model.Bait
 import com.dungeonboss.model.BaitIcons
 import com.dungeonboss.model.Boss
 import com.dungeonboss.model.Hero
-import com.dungeonboss.model.PlacedRoom
 import com.dungeonboss.model.Room
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -34,15 +33,15 @@ class EngineTest {
 
     private fun dungeon(bossDamage: Int, roomDamages: List<Int>): Dungeon {
         val d = Dungeon(boss(bossDamage))
-        // add right-to-left so the listed order is left->right
-        roomDamages.asReversed().forEach { d.addRoomToLeft(room(it)) }
+        // place into slots 0.. so the listed order is left->right
+        roomDamages.forEachIndexed { i, dmg -> d.placeRoom(i, room(dmg)) }
         return d
     }
 
     @Test
     fun partyContinuesAfterADeathUntilAllDie() {
-        val a = Hero(id = "a", name = "A", health = 4, preferredBait = Bait.GLORY)
-        val b = Hero(id = "b", name = "B", health = 4, preferredBait = Bait.GLORY)
+        val a = Hero(id = "a", name = "A", preferredBait = Bait.GLORY, startingHp = 4)
+        val b = Hero(id = "b", name = "B", preferredBait = Bait.GLORY, startingHp = 4)
         // entrance dmg 4 (kills A), boss dmg 4 (kills B)
         val res = PartyCrawlResolver.resolve(Party(listOf(a, b)), dungeon(4, listOf(4)))
 
@@ -55,8 +54,8 @@ class EngineTest {
     @Test
     fun twoHeroesWithTheSameIdAreIndependent() {
         // Distinct objects sharing an id (as the deck produces) must not collapse.
-        val m1 = Hero(id = "hero_mage", name = "Mage", health = 4, preferredBait = Bait.POWER)
-        val m2 = Hero(id = "hero_mage", name = "Mage", health = 4, preferredBait = Bait.POWER)
+        val m1 = Hero(id = "hero_mage", name = "Mage", preferredBait = Bait.ARCANE, startingHp = 4)
+        val m2 = Hero(id = "hero_mage", name = "Mage", preferredBait = Bait.ARCANE, startingHp = 4)
         val res = PartyCrawlResolver.resolve(Party(listOf(m1, m2)), dungeon(4, listOf(4)))
 
         assertEquals(2, res.deaths)
@@ -65,8 +64,8 @@ class EngineTest {
 
     @Test
     fun targetingHitsTheHighestCurrentHealthMember() {
-        val low = Hero(id = "low", name = "Low", health = 3, preferredBait = Bait.GLORY)
-        val high = Hero(id = "high", name = "High", health = 8, preferredBait = Bait.GLORY)
+        val low = Hero(id = "low", name = "Low", preferredBait = Bait.GLORY, startingHp = 3)
+        val high = Hero(id = "high", name = "High", preferredBait = Bait.GLORY, startingHp = 8)
         val res = PartyCrawlResolver.resolve(Party(listOf(low, high)), dungeon(0, listOf(2)))
         // Only one encounter does damage; the higher-health hero is hit.
         assertSame(high, res.log.first().hero)
@@ -74,15 +73,23 @@ class EngineTest {
 
     @Test
     fun barbarianHalvesOnlyHisOwnHits() {
-        val barb = Hero(id = "hero_barbarian", name = "Barbarian", health = 8, preferredBait = Bait.GLORY)
+        // Barbarian: self-damage multiplier 0.5, rounded up (data-driven).
+        val barb = Hero(
+            id = "hero_barbarian", name = "Barbarian", preferredBait = Bait.GLORY,
+            startingHp = 8, selfDamageMultiplier = 0.5
+        )
         // 5 damage, halved rounded up => 3.
         assertEquals(3, HeroAbility.damageTaken(barb, room(5), listOf(barb)))
     }
 
     @Test
     fun clericAuraProtectsWhoeverIsHitFromUndead() {
-        val cleric = Hero(id = "hero_cleric", name = "Cleric", health = 5, preferredBait = Bait.UNDEAD)
-        val ally = Hero(id = "ally", name = "Ally", health = 5, preferredBait = Bait.GLORY)
+        // Cleric: party-wide undead-bait reduction of 4 (data-driven).
+        val cleric = Hero(
+            id = "hero_cleric", name = "Cleric", preferredBait = Bait.UNDEAD, startingHp = 5,
+            partyDamageReduction = 4, damageBaitFilter = Bait.UNDEAD
+        )
+        val ally = Hero(id = "ally", name = "Ally", preferredBait = Bait.GLORY, startingHp = 5)
         val undeadRoom = room(5, type = "Basic Monster", bait = mapOf("undead" to 1))
         // Cleric alive => ally takes 5 - 4 = 1.
         assertEquals(1, HeroAbility.damageTaken(ally, undeadRoom, listOf(cleric, ally)))
@@ -93,23 +100,23 @@ class EngineTest {
     @Test
     fun enticementSumsPreferredBaitAcrossMembers() {
         val d = Dungeon(boss(4, bait = mapOf("glory" to 1)))
-        d.addRoomToLeft(room(2, bait = mapOf("glory" to 1)))
+        d.placeRoom(0, room(2, bait = mapOf("glory" to 1)))
         assertEquals(2, BaitCounter.enticement(d, Bait.GLORY))
 
-        val g1 = Hero(id = "g1", name = "G1", health = 5, preferredBait = Bait.GLORY)
-        val g2 = Hero(id = "g2", name = "G2", health = 5, preferredBait = Bait.GLORY)
+        val g1 = Hero(id = "g1", name = "G1", preferredBait = Bait.GLORY, startingHp = 5)
+        val g2 = Hero(id = "g2", name = "G2", preferredBait = Bait.GLORY, startingHp = 5)
         // Two glory members => 2 + 2 = 4.
-        assertEquals(4, BaitPhase.enticement(d, Party(listOf(g1, g2))))
+        assertEquals(4, EnticePhase.enticement(d, Party(listOf(g1, g2))))
     }
 
     @Test
-    fun restoreRoomsReversesAPlacement() {
-        // Undo-placement snapshots the rooms, then restores them to drop a build.
-        val d = dungeon(0, listOf(2, 3))
-        val snapshot = d.rooms.map { PlacedRoom(it.baseRoom, it.upgrade).also { c -> c.grow = it.grow } }
-        d.addRoomToLeft(room(9)) // place a new entrance room
-        assertEquals(listOf(9, 2, 3), d.rooms.map { it.damage })
-        d.restoreRooms(snapshot)
+    fun restoreSlotsReversesAPlacement() {
+        // Undo-placement snapshots the 5 slots, then restores them to drop a build.
+        val d = dungeon(0, listOf(2, 3)) // slots 0,1 occupied
+        val snapshot = d.snapshotSlots()
+        d.placeRoom(2, room(9)) // place a new room in slot 2
+        assertEquals(listOf(2, 3, 9), d.rooms.map { it.damage })
+        d.restoreSlots(snapshot)
         assertEquals(listOf(2, 3), d.rooms.map { it.damage }) // back to before the placement
     }
 

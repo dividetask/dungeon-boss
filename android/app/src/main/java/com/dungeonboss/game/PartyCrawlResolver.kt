@@ -68,7 +68,7 @@ object PartyCrawlResolver {
         private var deathsHere = 0
 
         init {
-            for (hero in participants) health[hero] = hero.health
+            for (hero in participants) health[hero] = hero.maxHp
         }
 
         fun resolve(): Result {
@@ -99,7 +99,7 @@ object PartyCrawlResolver {
 
         /** Most current health, then most max health, then earliest board order. */
         private fun pickTarget(): Hero =
-            alive.maxWith(compareBy({ health.getValue(it) }, { it.health }))
+            alive.maxWith(compareBy({ health.getValue(it) }, { it.maxHp }))
 
         private fun poisonTick(encounter: Encounter) {
             for (hero in alive.toList()) {

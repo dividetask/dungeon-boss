@@ -2,10 +2,10 @@ package com.dungeonboss.model
 
 /**
  * The set of valid bait types and validation of a bait name.
- * Bait types are exactly: glory, riches, undead, power.
+ * Bait types are exactly: glory, riches, undead, arcane.
  */
 enum class Bait {
-    GLORY, RICHES, UNDEAD, POWER;
+    GLORY, RICHES, UNDEAD, ARCANE;
 
     companion object {
         /**

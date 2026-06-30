@@ -7,19 +7,18 @@ import com.dungeonboss.game.Party
 import com.dungeonboss.game.Player
 
 /**
- * Bait. Each party is drawn toward the single most enticing dungeon (enticement
- * = the combined count of every member's preferred bait across that dungeon — a
- * bait shared by two members counts twice). A tie for the top enticement leaves
- * the party unenticed.
+ * Entice (the first step of the Crawl). Each party is drawn toward the single
+ * most enticing dungeon (enticement = the combined count of every member's
+ * preferred bait across that dungeon — a bait shared by two members counts
+ * twice). A tie for the top enticement leaves the party unenticed.
  *
  * An enticed party only enters if its combined courage is at least the target
- * dungeon owner's points. Bait is combined with the Crawl phase: the game asks
- * [targetFor] for each party right before it would enter, so the courage check
- * uses the owner's CURRENT points (which rise as earlier parties die). A party
- * that does not enter is left for Recruitment. Orchestration only; math in
- * BaitCounter.
+ * dungeon owner's points. Entice is evaluated per party right before it would
+ * enter, so the courage check uses the owner's CURRENT points (which rise as
+ * earlier parties die). A party that does not enter waits for Recharge.
+ * Orchestration only; math in BaitCounter. (Was BaitPhase.)
  */
-object BaitPhase {
+object EnticePhase {
     /**
      * The player whose dungeon this party enters right now, or null if it stays
      * in town — unenticed (tie/zero), or too timid for the owner's current points.

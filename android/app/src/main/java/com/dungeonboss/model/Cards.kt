@@ -87,16 +87,46 @@ class Upgrade(
     val type: String get() = "Upgrade"
 }
 
-/** One hero card's data: the adventurers who crawl dungeons. */
+/**
+ * One hero card's data: the adventurers who crawl dungeons. Fully data-driven —
+ * no per-id code. A hero carries a mutable [level] (its only mutable field): it
+ * is set to floor(round / 4) when the hero arrives, gains +1 each time the hero
+ * survives a crawl, and persists until the hero dies. Three stats derive from it:
+ *   maxHp           = startingHp + floor(level * hpLevelIncrement)
+ *   courage         = 1 + level                      (uniform base 1)
+ *   partyReduction  = partyDamageReduction + floor(level * partyDamageReductionLevelIncrement)
+ * See docs/cards.md (Levelling and derived stats).
+ */
 class Hero(
     override val id: String,
     override val name: String,
-    val health: Int,
     val preferredBait: Bait,
-    val courage: Int = 1,
+    val startingHp: Int,
+    val hpLevelIncrement: Double = 0.0,
+    val selfDamageMultiplier: Double = 1.0,
+    val partyDamageReduction: Int = 0,
+    val partyDamageReductionLevelIncrement: Double = 0.0,
+    /** When set, the party reduction only applies to encounters carrying this bait. */
+    val damageBaitFilter: Bait? = null,
+    /** When set, the party reduction only applies to rooms of this type ("trap"/"creature"). */
+    val damageRoomTypeFilter: String? = null,
+    val icon: String = "",
     val tags: Set<String> = emptySet(),
     val abilityText: String = ""
-) : Card
+) : Card {
+    /** The hero's current level (mutable; see the class doc). */
+    var level: Int = 0
+
+    /** Full (levelled) health: starting HP plus floored per-level growth. */
+    val maxHp: Int get() = startingHp + kotlin.math.floor(level * hpLevelIncrement).toInt()
+
+    /** Combined into a party's courage; rises by 1 per level (uniform base 1). */
+    val courage: Int get() = 1 + level
+
+    /** The levelled flat party-wide damage reduction this hero contributes. */
+    val partyReduction: Int
+        get() = partyDamageReduction + kotlin.math.floor(level * partyDamageReductionLevelIncrement).toInt()
+}
 
 /** One ability card's data: held in hand and played before a crawl to alter it. */
 class AbilityCard(
@@ -120,6 +150,17 @@ class PlacedRoom(
     /** Permanent damage gained from grow-on-death effects (never reset). */
     var grow: Int = 0
 
+    /**
+     * The room's level, raised when a room card is spent to upgrade it (+1 for a
+     * basic room, +2 for an advanced one). Permanent. The gameplay effect of a
+     * room's level is being implemented on a separate branch; for now this only
+     * records it (and the granted bait icons below).
+     */
+    var level: Int = 0
+
+    /** Bait icons granted by room cards spent to upgrade this room. */
+    private val grantedBait = LinkedHashMap<Bait, Int>()
+
     val id: String get() = baseRoom.id
     val name: String get() = baseRoom.name
     override val type: String get() = baseRoom.type
@@ -135,10 +176,30 @@ class PlacedRoom(
 
     override val bait: BaitIcons
         get() {
-            val up = upgrade ?: return baseRoom.bait
+            if (upgrade == null && grantedBait.isEmpty()) return baseRoom.bait
             val totals = LinkedHashMap<Bait, Int>()
             baseRoom.bait.toMap().forEach { (b, c) -> totals[b] = (totals[b] ?: 0) + c }
-            up.bait.toMap().forEach { (b, c) -> totals[b] = (totals[b] ?: 0) + c }
+            upgrade?.bait?.toMap()?.forEach { (b, c) -> totals[b] = (totals[b] ?: 0) + c }
+            grantedBait.forEach { (b, c) -> totals[b] = (totals[b] ?: 0) + c }
             return BaitIcons(totals)
         }
+
+    /**
+     * Spend a basic or advanced room card to upgrade this room: it gains every
+     * bait icon of the spent card, and its level rises by 1 (basic) or 2
+     * (advanced). The caller discards the spent card.
+     */
+    fun upgradeWith(card: Room) {
+        card.bait.toMap().forEach { (b, c) -> grantedBait[b] = (grantedBait[b] ?: 0) + c }
+        level += if (card.advanced) 2 else 1
+    }
+
+    /** A deep copy carrying the same upgrade/grow/level/granted bait (for undo). */
+    fun copyState(): PlacedRoom {
+        val copy = PlacedRoom(baseRoom, upgrade)
+        copy.grow = grow
+        copy.level = level
+        copy.grantedBait.putAll(grantedBait)
+        return copy
+    }
 }
