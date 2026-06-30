@@ -4,10 +4,10 @@ bosses:
     damage: 4
     bait:
       undead: 1
-      power: 1
+      arcane: 1
     effect:
       room_bonuses:
-        - match: { bait: power, type: trap }
+        - match: { bait: arcane, type: trap }
           per_point: 1
     ability_text: "Arcane trap rooms deal +1 damage per point."
 
@@ -16,7 +16,7 @@ bosses:
     damage: 8
     bait:
       glory: 1
-      power: 1
+      arcane: 1
     effect:
       room_bonuses:
         - match: { tag: goblin }
@@ -59,7 +59,7 @@ bosses:
     damage: 2
     bait:
       undead: 1
-      power: 1
+      arcane: 1
       glory: 1
     effect:
       self_damage_per_point: 3
@@ -82,7 +82,7 @@ bosses:
     damage: 4
     bait:
       undead: 1
-      power: 1
+      arcane: 1
     effect:
       room_bonuses:
         - match: { type: creature, bait: undead }

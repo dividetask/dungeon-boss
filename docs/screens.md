@@ -9,8 +9,9 @@ A round flows through these states:
 
 ```
 Home → Setup (choose boss → place first room) → READY
-  └─ loop: Build (discard → place/skip) → Bait+Crawl (send parties / pre-crawl)
-           or Quiet (no heroes attacked) → READY → …
+  └─ loop: Discard (0–2) → Draw → Build (place/upgrade/skip) →
+           Crawl (Entice → Ability → Gauntlet: send parties)
+           or Quiet (no party crawled) → Recharge → READY → …
   └─ Game over
 ```
 
@@ -97,38 +98,47 @@ rooms are tappable (the first placement must be a room).
 
 ---
 
-## Build — Discard
+## Discard
 
-`stage = building`, decision `discard_room`. Tap any hand card to discard it
-(mandatory). After choosing, an **Undo discard** option appears during the build
-step.
+`stage = building`, decision `discard_rooms`. Tap **0, 1, or 2** hand cards to
+discard (optional — you may discard nothing), then confirm. The Draw phase then
+gives you **1 + (cards discarded)** new rooms. After confirming, an **Undo
+discard** option appears during the build step.
 
 ```
-│ Player 1: discard a room card                                                  │
-│ Your hand:  [card][card][card][card][card][card]  ← tap one to throw away      │
-│ "Tap a card to throw it away."                                                 │
-│ Advance bar: "Tap a card to discard"                                           │
+│ Player 1: discard 0–2 room cards (optional)                                    │
+│ Your hand:  [card][card][card][card][card][card]  ← tap up to two              │
+│ "Discarding more draws more: you draw 1 + the number you discard."             │
+│ Advance bar: [ Confirm discard (0) ]                                           │
 ```
 
-## Build — Place a room (or build nothing)
+## Build — Place or upgrade a room (or build nothing)
 
 Decision `build_room`. Tap a hand card, then tap a slot in your dungeon:
-a basic room adds at the entrance or replaces a room; an upgrade attaches to a
-room; an advanced room replaces a room sharing one of its bait icons.
+
+- a **room** placed into an **empty** slot fills it; into an **occupied** slot
+  replaces that room;
+- an **advanced room** may fill an empty slot, or replace a room sharing one of
+  its bait icons;
+- a dedicated **upgrade** card attaches to a room;
+- alternatively, tap **Upgrade** on a placed room then a **room card** to spend it
+  (the room gains that card's bait icons and a level).
 
 ```
-│ Player 1: choose a room to add to your dungeon, or build nothing               │
+│ Player 1: place a room, upgrade a room, or build nothing                       │
 │ Your hand:  [card]selectable…           [↶ Undo discard]                       │
-│ Player 1 — dungeon:  [+ add new room here] [Room]…[BOSS]   ← tap a slot        │
+│ Player 1 — dungeon:  [slot0][slot1][slot2][slot3][slot4][BOSS]  ← tap a slot   │
 │ Advance bar: [ Build nothing ]                                                 │
 ```
 
 ---
 
-## Bait + Crawl — Pre-crawl
+## Crawl — Ability step (pre-Gauntlet)
 
-`stage = crawling`, a party is about to enter a dungeon. The **Pre-crawl panel**
-shows the target dungeon's encounters and your ability cards.
+`stage = crawling`, a party has been enticed and is about to enter a dungeon (the
+**Ability** step before the Gauntlet). The panel shows the target dungeon's
+encounters and your ability cards. *(The full turn-based priority loop is a
+[TODO](phases.md#7b-ability); today this is the one pre-Gauntlet window.)*
 
 ```
 │ ⚔ <Party name> → <Owner>'s dungeon                                             │

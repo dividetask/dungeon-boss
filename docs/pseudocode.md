@@ -7,7 +7,7 @@ implementation in `webapp/lib`; the Android (Kotlin) client should match the
 behaviour, not the syntax.
 
 Conventions: `Card.field` = stored data; `↦` = returns; bait types are
-`glory|riches|undead|power`.
+`glory|riches|undead|arcane`.
 
 ---
 
@@ -15,7 +15,7 @@ Conventions: `Card.field` = stored data; `↦` = returns; bait types are
 
 ### Bait
 ```
-ALL = [glory, riches, undead, power]
+ALL = [glory, riches, undead, arcane]
 normalize(name) ↦ lowercase symbol; error if not in ALL
 ```
 
@@ -42,18 +42,30 @@ Room:    id, name, type, damage, bait, description, effect:map, tags, advanced?
          trap?     ↦ type contains "trap"
          creature? ↦ type contains "monster" or "creature"
 Upgrade: id, name, bonus_damage, bait, description, tags;  type = "Upgrade"
-Hero:    id, name, health, preferred_bait, courage, tags, ability_text
+Hero:    id, name, icon, preferred_bait, starting_hp, hp_level_increment,
+         self_damage_multiplier, party_damage_reduction,
+         party_damage_reduction_level_increment,
+         damage_bait_filter (bait|nil), damage_room_type_filter (type|nil), tags
+         level = 0     # the ONE mutable field: set at arrival, +1 on crawl survival,
+                       # persists until the hero dies (heroes are distinct instances)
+         max_hp          ↦ starting_hp + floor(level * hp_level_increment)
+         courage         ↦ 1 + level                 # uniform base 1 (interpretation)
+         party_reduction ↦ party_damage_reduction
+                           + floor(level * party_damage_reduction_level_increment)
 AbilityCard: id, name, text, effect:map, tags
 ```
 Cards with the same definition are built as **distinct objects** (so two copies
 of one card never collapse into one); identity matters in a party/crawl.
 
-### PlacedRoom  (a Room as it sits in a dungeon: base + optional upgrade + grow)
+### PlacedRoom  (a Room in a dungeon: base + optional upgrade + grow + level)
 ```
-new(base_room, upgrade=nil); grow = 0   # grow is permanent (grow-on-death)
+new(base_room, upgrade=nil); grow = 0; level = 0   # grow & level are permanent
 damage ↦ base_room.damage + (upgrade ? upgrade.bonus_damage : 0) + grow
-bait   ↦ base_room.bait merged with upgrade.bait (counts added)
+bait   ↦ base_room.bait merged with upgrade.bait AND any bait granted by
+         room-card upgrades (counts added)
 tags   ↦ base_room.tags ∪ (upgrade ? upgrade.tags : ∅)
+upgrade_with(room_card): bait += room_card.bait; level += room_card.advanced? ? 2 : 1
+         # the gameplay effect of `level` is built on another branch
 effect, type, trap?, creature?, id, name ↦ delegate to base_room
 ```
 
@@ -107,24 +119,26 @@ targets_room? ↦ add_damage present OR unreducible? OR zero? OR retreat?  (need
 # retreat = the party turns back AT the targeted room (rooms before it still resolve)
 ```
 
-### HeroAbility  (per-hero damage modifiers; looked up by hero id)
+### HeroAbility  (per-hero damage modifiers; read from the hero's DATA fields)
 ```
-abilities:
-  hero_barbarian → HalveRoundedUp   (scope :self)   reduced(_, dmg) = ceil(dmg/2)
-  hero_cleric    → ReduceBait(undead, 4) (scope :party)
-  hero_mage      → ReduceBait(power, 4)  (scope :party)
-  hero_rogue     → ReduceTrap(2)         (scope :party)
-  (others)       → Null (scope :self, no reduction)
+# No per-id code. Each hero contributes from its own fields:
+#   party aura  → party_damage_reduction (levelled), gated by the two filters
+#   self mult   → self_damage_multiplier, applied to the hero itself only
 
-ReduceBait(bait,n).reduced(enc, dmg) ↦ enc.bait.count(bait)>0 ? max(dmg-n,0) : dmg
-ReduceTrap(n).reduced(enc, dmg)      ↦ enc.trap? ? max(dmg-n,0) : dmg
+filter_matches?(hero, encounter):           # does the party aura apply here?
+    if hero.damage_bait_filter and encounter.bait.count(filter) == 0: ↦ false
+    if hero.damage_room_type_filter and not encounter is room of that type: ↦ false
+    ↦ true                                   # null filters are ignored; both set ⇒ both must hold
+
+party_reduction(member, encounter):
+    filter_matches?(member, encounter) ? member.party_reduction : 0   # uses member.level
 
 damage_taken(target, encounter, alive_members, base):
     dmg = base
-    for member in alive_members:                  # PARTY auras stack across members
-        if member.ability.scope == :party: dmg = member.ability.reduced(encounter, dmg)
-    if target.ability.scope == :self:    dmg = target.ability.reduced(encounter, dmg)
-    ↦ dmg                                          # auras first, then self (halving) last
+    for member in alive_members:             # PARTY auras stack across members
+        dmg = max(dmg - party_reduction(member, encounter), 0)
+    dmg = ceil(dmg * target.self_damage_multiplier)   # self mult last, rounded up
+    ↦ max(dmg, 0)                            # auras first, then self multiplier last
 ```
 
 ### CrawlModifiers  (per-crawl, keyed by encounter index; reset each crawl)
@@ -148,14 +162,17 @@ discard(card); reclaim(card) ↦ remove that exact card from the discard pile (u
 empty? ↦ both piles empty
 ```
 
-### Dungeon  (boss + ordered rooms; entrance = index 0, boss on the right)
+### Dungeon  (boss + 5 ordered slots; entrance = slot 0, boss on the right)
 ```
-MAX_ROOMS = 5
-full? ↦ rooms.size >= MAX_ROOMS
-add_room_to_left(room): prepend PlacedRoom(room)            # error if full
-replace_room(i, room) ↦ old PlacedRoom (caller discards it; its upgrade is lost)
-apply_upgrade(i, upgrade) ↦ previous upgrade (or nil)       # one upgrade per room
-encounters() ↦ rooms (left→right) followed by the boss
+SLOTS = 5; slots = [nil, nil, nil, nil, nil]   # each slot is empty or a PlacedRoom
+empty_slots ↦ indices where slots[i] is nil
+occupied    ↦ PlacedRooms in slot order (skips empties)
+full? ↦ no empty slots
+place_room(i, room) ↦ old PlacedRoom or nil:               # empty fills, occupied replaces
+    old = slots[i]; slots[i] = PlacedRoom(room); ↦ old     # caller discards old + its upgrade
+apply_upgrade(i, upgrade) ↦ previous upgrade (or nil)      # one dedicated upgrade per room
+upgrade_room_with(i, room_card): slots[i].upgrade_with(room_card)   # bait + level
+encounters() ↦ occupied (left→right) followed by the boss
 ```
 
 ### Player
@@ -186,8 +203,10 @@ standings(ps)  ↦ sorted best-first, eliminated last
 
 ### Decision  (a pending player choice; pure data)
 ```
-kind ∈ {choose_boss, place_first_room, discard_room, build_room}
+kind ∈ {choose_boss, place_first_room, discard_rooms, build_room}
 fields: player, options (frozen list), allow_skip
+  # place_first_room / build_room options include the target SLOT (0..4)
+  # discard_rooms is a skippable multi-select of 0..2 room cards
 prompt ↦ human-readable text for the kind
 ```
 
@@ -213,7 +232,7 @@ enticement(dungeon, bait) ↦ Σ over (rooms + boss) of source.bait.count(bait)
 ### PartyCrawlResolver  (runs a whole party through a dungeon)
 ```
 resolve(party, dungeon, boss_bonus=owner_points, modifiers):
-  health = {hero ↦ hero.health}; alive = party.heroes; dead = []; log = []
+  health = {hero ↦ hero.max_hp}; alive = party.heroes; dead = []; log = []  # full LEVELLED HP
   poison = {}; delayed = {}; draws = {}      # delayed/draws: see below
   for (encounter, i) in dungeon.encounters:
      break if alive empty
@@ -257,10 +276,11 @@ bait_totals / all_bait_totals ↦ per-type sums across rooms+boss
 ### RandomAgent  (automated player)
 ```
 choose(decision):
-    build_room   → randomly: nothing / place a basic room (add or replace) /
-                   attach an upgrade / place an advanced room on a bait-sharing room
-    discard_room → a random hand card
-    else         → a random option
+    build_room    → randomly: nothing / place a room into a random slot (empty or
+                    replacing) / attach a dedicated upgrade / spend a room card to
+                    upgrade a placed room (bait + level)
+    discard_rooms → randomly discard 0..2 hand cards
+    else          → a random option
 ```
 
 ### PartyNamer
@@ -274,30 +294,44 @@ generate(rng) ↦ "The <Adjective> <Noun>"   (from fixed word lists)
 
 ## Phases  (orchestration only — no rules data)
 
-### SetupPhase
+### SetupPhase  (Boss Selection + First Room Selection)
 ```
 deal(game): for each player → deal STARTING_ROOMS (mulligan until ≥1 basic room),
             STARTING_ABILITIES ability cards, and BOSS_CANDIDATES boss candidates
 choose_boss(game, player, id): keep that boss, discard the rest, make its Dungeon
-place_first_room(game, player, id): move room from hand into the dungeon (must be a Room)
+place_first_room(game, player, id, slot): move room from hand into dungeon slot 0..4
+                                          (must be a Room)
 ```
 
 ### ArrivalPhase
 ```
-run(game): repeat (number of LIVING players) times → draw a hero into town as a lone party
+run(game): repeat (number of LIVING players) times → draw a hero into town as a lone
+           party; set the drawn hero's level = floor(game.round / 4)
+```
+
+### DiscardPhase
+```
+discard(game, player, ids[0..2]) ↦ the discarded rooms (caller may offer undo)
+                                    # 0..2 cards; discarding nothing is allowed
+```
+
+### DrawPhase
+```
+draw_for(game, player, discarded_count):
+    player draws (1 + discarded_count) rooms (discard overflow over MAX_ROOM_HAND)
 ```
 
 ### BuildPhase
 ```
-draw_for_each(game): each LIVING player draws DRAW_COUNT(=2) rooms (discard overflow over the cap)
-discard(game, player, id) ↦ the discarded room (so the caller can offer undo)
 place(game, player, card_id, target):
-    upgrade  → dungeon.apply_upgrade(target); discard any replaced upgrade
-    advanced → require placed room shares ≥1 bait icon; replace it (discard old)
-    basic    → target "new"/nil: add at entrance; else replace room at index
+    upgrade_card      → dungeon.apply_upgrade(slot); discard any replaced upgrade
+    upgrade_with_room → dungeon.upgrade_room_with(slot, room_card); discard the spent card
+                        #   grants bait + level (effect of level: another branch)
+    advanced room     → empty slot: place; occupied slot: require ≥1 shared bait, replace (discard old)
+    basic room        → place into the chosen slot (empty fills, occupied replaces/discards)
 ```
 
-### BaitPhase  (combined with Crawl — evaluated per party, see Game)
+### EnticePhase  (was BaitPhase — evaluated per party, see Game)
 ```
 target_for(game, party) ↦ the player whose dungeon the party enters NOW, or nil:
     p = most_enticing_player(game, party)
@@ -307,7 +341,14 @@ most_enticing_player(game, party):
 enticement(dungeon, party) ↦ Σ members: BaitCounter.enticement(dungeon, member.preferred_bait)
 ```
 
-### CrawlPhase
+### AbilityPhase  *(TODO — not built)*
+```
+# Target design: a priority loop. Players take turns playing one ability or passing;
+# any ability played re-opens the window to ALL players, until everyone passes in a row.
+# For now the Game's existing pre-Gauntlet interaction (play_ability / boost_room) stands in.
+```
+
+### GauntletPhase  (was CrawlPhase)
 ```
 resolve_party(game, player, party, modifiers):
     result = PartyCrawlResolver.resolve(party, player.dungeon, boss_bonus: player.points, modifiers)
@@ -316,15 +357,19 @@ resolve_party(game, player, party, modifiers):
     player.gain_wound if NOT modifiers.retreating? AND any survivor   # retreaters take no wound
     remove dead heroes from the party; if party empty → remove it from town
     ↦ Outcome(player, party, result, retreated: modifiers.retreating?)
+            # result.survivors are recorded for levelling in RechargePhase
 ```
 
-### RecruitmentPhase
+### RechargePhase  (was RecruitmentPhase; now also abilities + levelling)
 ```
-run(game, waiting):
+run(game, waiting, attacked_owners, crawl_survivors):
+    # 1. ability cards — each LIVING player NOT in attacked_owners draws one ability card
+    # 2. party consolidation (unchanged):
     lones   = waiting.select lone;  parties = waiting.reject lone
     each multi-hero party pulls in one lone hero (prefer a different preferred bait)
     remaining lones pair off into new parties (PartyNamer); odd one out stays alone
     merged-away parties are removed from town
+    # 3. levelling — each hero in crawl_survivors: hero.level += 1
 ```
 
 ---
@@ -340,17 +385,18 @@ start():
     SetupPhase.deal; enqueue choose_boss + place_first_room per player; stage=setup; auto_advance
 
 start_round():  (only when ready?)
-    round++; clear last outcomes
-    ArrivalPhase.run; BuildPhase.draw_for_each
-    enqueue discard_room (mandatory) + build_room (skippable) per LIVING player
+    round++; clear last outcomes; attacked_owners={}; crawl_survivors={}
+    ArrivalPhase.run                          # arriving heroes get level floor(round/4)
+    enqueue discard_rooms (skippable, 0..2) + build_room (skippable) per LIVING player
     stage=building; auto_advance
 
 decide(choice_id, target):           # player applies the head decision
     process_head(choice_id, target); auto_advance
 process_head:
     pop head decision; error if no choice given and not skippable
-    clear undoable-discard unless this is a discard_room
-    apply(decision) → SetupPhase/BuildPhase; record undoable discard for discard_room
+    clear undoable-discard unless this is a discard_rooms
+    apply(decision) → SetupPhase/DiscardPhase/BuildPhase
+    if discard_rooms: record undoable discard; DrawPhase.draw_for(player, #discarded)
     resolve_if_idle
 auto_advance: while head decision belongs to an agent → agent.choose → process_head
 
@@ -359,21 +405,22 @@ resolve_if_idle:  (when the decision queue is empty)
     building → crawl_queue = town (order); waiting=[]; any_entered=false
                stage=crawling; advance_to_next_crawl
 
-advance_to_next_crawl:               # BAIT + CRAWL combined
+advance_to_next_crawl:               # ENTICE + GAUNTLET, per party
     while crawl_queue not empty:
         party = crawl_queue.shift
-        p = BaitPhase.target_for(self, party)     # re-checks courage vs CURRENT points
+        p = EnticePhase.target_for(self, party)   # re-checks courage vs CURRENT points
         if p: current_crawl=[p,party]; reset modifiers; any_entered=true; RETURN (await Send)
         else: waiting << party
     current_crawl = nil
     if any_entered: finish_turn
-    else:           stage = quiet                  # no hero attacked
+    else:           stage = quiet                  # no party crawled
 
 send_next_party():                   # the "Send party" button
     return if no current_crawl
-    agent_pre_crawl(owner)            # automated owner may discard-to-boost
-    outcome = CrawlPhase.resolve_party(self, owner, party, modifiers)
+    agent_pre_crawl(owner)            # automated owner may discard-to-boost (Ability step)
+    outcome = GauntletPhase.resolve_party(self, owner, party, modifiers)
     last_outcomes = [outcome]
+    attacked_owners << owner; crawl_survivors += outcome.result.survivors   # for Recharge
     apply_death_draws(owner, outcome.result)   # Soul Siphon / Unhallowed Ground
     current_crawl = nil
     if Scoreboard.over?(players): winner = Scoreboard.winner(players, owner); stage=over
@@ -384,8 +431,9 @@ apply_death_draws(owner, result):    # cards earned by draw-on-death rooms
     draw_rooms_for(owner, result.draws["room"])   # respects the room-hand cap
 
 finish_quiet_round():                # "Continue" on a quiet round
-    grant each player an ability card; finish_turn
-finish_turn: RecruitmentPhase.run(self, waiting); waiting=[]; stage=ready
+    finish_turn                       # Recharge grants ability cards to un-attacked players
+finish_turn: RechargePhase.run(self, waiting, attacked_owners, crawl_survivors)
+             waiting=[]; stage=ready
 
 play_ability(player, card_id, target):     # before/instead of a crawl
     valid only if a current crawl, or quiet (then only non-targeting cards)
@@ -398,7 +446,8 @@ boost_room(card_id, room_index):     # dungeon owner discards to boost a room
     apply discard_boost spec: add_damage(+N) / set_damage / unreducible!
 
 undo_discard(): if can_undo (a discard made, build step pending) →
-    reclaim the card from the deck back into hand; re-prompt the discard
+    reclaim the discarded card(s) from the deck back into hand (and return the
+    cards drawn for them); re-prompt the discard
 
 queries the UI uses: current_decision, awaiting_decision?, ready?, crawling?,
     quiet?, over?, next_crawl, crawl_mods, living_players, eliminated?(player),

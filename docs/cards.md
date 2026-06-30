@@ -15,11 +15,11 @@ There are exactly four bait types:
 | `glory`  | Fame, honor, renown            |
 | `riches` | Gold, treasure, loot           |
 | `undead`  | The macabre, necromancy        |
-| `power`  | Arcane might, domination       |
+| `arcane` | Arcane might, domination       |
 
 - **Rooms** and **bosses** carry **bait icons** — a count per bait type.
 - **Heroes** have a single **preferred bait**.
-- During the [Bait phase](phases.md#4-bait-phase), a hero is lured by the count
+- During the [Entice step](phases.md#7a-entice), a hero is lured by the count
   of its *preferred* bait across a dungeon.
 
 Bait icons are represented as a map from bait type to a non-negative integer
@@ -111,30 +111,81 @@ undead`).
 
 ### Hero card
 
-| Field            | Type         | v1 | Notes                               |
-|------------------|--------------|----|-------------------------------------|
-| `id`             | string       | ✅ | Unique identifier                   |
-| `name`           | string       | ✅ | Display name                        |
-| `health`         | integer > 0  | ✅ | Starting/full health                |
-| `preferred_bait` | bait         | ✅ | One of the four bait types          |
-| `courage`        | integer 1–2  | ✅ | Courage check + combined for parties (default 1) |
-| `tags`           | array<string>| ✅ | Classification tags (optional)      |
-| `ability_text`   | string       | ✅ | Flavor; the ability is keyed by hero `id` (see below) |
+A hero's mechanical behaviour is **fully data-driven** — there is no per-hero
+code. Every field below is read from the YAML, so a hero can be retuned (or a new
+hero added) by editing data alone.
 
-Hero abilities currently implemented (by hero id, as damage modifiers):
+| Field            | Type          | Notes                                                         |
+|------------------|---------------|---------------------------------------------------------------|
+| `id`             | string        | Unique identifier                                             |
+| `name`           | string        | Display name                                                  |
+| `icon`           | string        | Display icon (emoji or asset key)                            |
+| `preferred_bait` | bait          | One of the four bait types — the hero's lure ("Bait")        |
+| `starting_hp`    | integer > 0   | Health at level 0                                            |
+| `hp_level_increment` | float     | HP gained per level (floored — see formula); may be < 1      |
+| `self_damage_multiplier` | float | Multiplies the damage **this hero** personally takes (self-scope) |
+| `party_damage_reduction` | integer ≥ 0 | Flat party-wide damage reduction at level 0 (the aura)   |
+| `party_damage_reduction_level_increment` | number | Added to the reduction per level (floored)      |
+| `damage_bait_filter` | bait \| null | If set, the party reduction only applies to encounters carrying this bait |
+| `damage_room_type_filter` | type \| null | If set, the party reduction only applies to rooms of this type (`trap`/`creature`) |
+| `tags`           | array<string> | Classification tags (optional)                              |
+| `copies`         | integer ≥ 1   | How many of this hero are in the deck (default 1)           |
+| `ability_text`   | string        | Optional flavor only; the mechanics live in the fields above |
 
-- **Barbarian** *(self only)* — halves the damage **he** takes, rounded up. It
-  protects only the Barbarian, not the rest of the party.
-- **Cleric** *(party-wide aura)* — reduces damage from any encounter with
-  **undead** bait by 4 for **whichever** party member is hit.
-- **Mage** *(party-wide aura)* — reduces damage from any encounter with
-  **power** bait by 4 for whichever party member is hit.
-- **Rogue** *(party-wide aura)* — reduces damage from **trap** rooms by 2 for
-  whichever party member is hit (the boss is not a room).
+#### Levelling and derived stats
 
-Aura abilities apply only while their hero is **alive** in the party. When a hit
-is reduced by both auras and the Barbarian's halving, the auras apply first and
-the halving last; damage never goes below 0.
+A hero carries a **level** that starts at `floor(round / 4)` when it arrives,
+gains **+1 every time it survives a crawl**, and persists until the hero dies
+(each hero tracks its own level). From the level, three stats are derived:
+
+```
+max_hp           = starting_hp + floor(level * hp_level_increment)
+courage          = 1 + level                          # uniform base 1, +1 per level (interpretation)
+party_reduction  = party_damage_reduction + floor(level * party_damage_reduction_level_increment)
+```
+
+Because `hp_level_increment` is a float that is **floored after multiplying by
+level**, classes with a small increment (e.g. the Mage's `0.05`) gain HP only
+occasionally, while a Barbarian (`2`) gains HP every level. HP itself is always
+an **integer**; only the increments are floats. Heroes are restored to their
+current (levelled) **full HP between crawls**.
+
+> **(interpretation)** The new hero schema does not carry an explicit courage
+> value, so courage uses a uniform base of `1` plus the hero's level. If a
+> per-class base is wanted later, add a `base_courage` field.
+
+#### How the damage fields combine
+
+The two reduction fields play the same roles the hard-coded hero abilities used
+to, only now as data:
+
+- **`party_damage_reduction`** is a **party-wide aura**: it reduces the damage
+  dealt to **whichever** member is hit, by `party_reduction` (the levelled
+  value), but **only** for encounters that pass the filters:
+  - `damage_bait_filter` — the encounter (room or boss) carries that bait icon.
+  - `damage_room_type_filter` — the encounter is a room of that type (the boss is
+    not a room).
+  - When **both** filters are set, the reduction applies only when **both**
+    match; when **neither** is set, it applies to **every** encounter. A null
+    filter is simply ignored.
+  The aura applies only while the granting hero is **alive** in the party, and
+  party auras from multiple members **stack**.
+- **`self_damage_multiplier`** is **self-scope**: it multiplies the damage **the
+  hero itself** takes (rounded **up**), unconditionally — no filter. A value of
+  `1` means no change; the Barbarian's `0.5` halves his incoming damage,
+  rounded up.
+
+Order of application matches the old rules: **party auras first, then the
+target's own self-multiplier last**; damage never goes below 0.
+
+The current four heroes expressed this way:
+
+| Hero | bait | start HP | hp/lvl | self× | party− | −/lvl | bait filter | type filter |
+|------|------|----------|--------|-------|--------|-------|-------------|-------------|
+| Barbarian | glory | 8 | 2 | 0.5 | 0 | 0 | — | — |
+| Rogue | riches | 6 | 1 | 1 | 2 | 1 | — | trap |
+| Cleric | undead | 5 | 0.75 | 1 | 4 | 1 | undead | — |
+| Mage | arcane | 4 | 0.05 | 1 | 4 | 2 | arcane | — |
 
 ### Upgrade card
 
@@ -157,15 +208,32 @@ Current upgrades, one per bait type plus a damage upgrade:
 - **Glory Banner** — +1 glory bait
 - **Treasure Pile** — +1 riches bait
 - **Cursed Idol** — +1 undead bait **and +2 damage**
-- **Arcane Sigil** — +1 power bait **and +2 damage**
+- **Arcane Sigil** — +1 arcane bait **and +2 damage**
 - **Reinforced Walls** — +3 damage
+
+### Room level (upgrading a room with a room card)
+
+Separately from the dedicated Upgrade cards above, during the
+[Build phase](phases.md#6-build) a player may **spend a basic or advanced room
+card from hand to upgrade a placed room** instead of placing it. Doing so:
+
+- adds **every bait icon** of the spent card to the target room, and
+- raises the target room's **level** by **1** (basic room) or **2** (advanced
+  room).
+
+A placed room therefore carries an integer **`level`** (starting at 0) that
+accumulates as it is upgraded. The spent card is discarded.
+
+> **(out of scope here)** The *gameplay effect* of a room's level is being
+> implemented on a separate branch. This change only records the level and the
+> granted bait icons; nothing in the crawl reads `level` yet.
 
 ### Advanced room
 
 A stronger room with a special **effect**. It may be played by **replacing an
 existing room that shares at least one of the advanced room's bait icons** —
-e.g. Antimagic *(power, power)* may replace any room that has at least one power
-icon. The replaced room and any upgrade on it are discarded. Advanced rooms are
+e.g. Antimagic *(arcane, arcane)* may replace any room that has at least one
+arcane icon. The replaced room and any upgrade on it are discarded. Advanced rooms are
 about as common as upgrades (4 basic : 1 upgrade : 1 advanced).
 
 | Field        | Type          | Notes                                          |
@@ -187,7 +255,7 @@ effect:
     - match: { type: trap }         #   (selector: tag / type / bait)
       flat: 2                        #   flat and/or per_point × owner points
   party_hits:                       # unreducible hits on matching members
-    - match: { preferred_bait: power }   #   (selector: preferred_bait / tag)
+    - match: { preferred_bait: arcane }  #   (selector: preferred_bait / tag)
       amount: 4
   poisons_on_hit: true              # the hero this room damages is poisoned
   grows_on_death: true              # +1 damage permanently per death here
@@ -219,7 +287,7 @@ The eleven advanced rooms expressed with this schema:
 - **Succubus**, **Plague Zombie** — `grows_on_death: true`.
 - **Poison Gas** — `poisons_on_hit: true` (deals its single-target damage, then
   the hero it hit loses 1 unreducible health at every later room).
-- **Antimagic Room** — `party_hits` matching `preferred_bait: power`, amount 4.
+- **Antimagic Room** — `party_hits` matching `preferred_bait: arcane`, amount 4.
 - **Zealots** — `party_hits` matching `preferred_bait: undead`, amount 4.
 - **Trap Makers Workshop** — `room_auras` matching `type: trap`, flat 2.
 - **Beast Tamer** — `room_auras` matching `type: creature`, flat 2.

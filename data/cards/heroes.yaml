@@ -1,32 +1,61 @@
+# Heroes — wandering adventurers lured into dungeons.
+#
+# The hero's mechanical behaviour is fully data-driven (no per-id code):
+#   max HP        = starting_hp + floor(level * hp_level_increment)
+#   courage       = 1 + level                          (uniform base; +1 per level)
+#   party reduce  = party_damage_reduction + floor(level * party_damage_reduction_level_increment)
+# A hero's level starts at floor(round / 4) when it arrives, gains +1 each time it
+# survives a crawl, and persists until the hero dies. See docs/cards.md and
+# docs/phases.md. Bait types are exactly: glory, riches, undead, arcane.
 heroes:
-  - id: hero_cleric
-    name: Cleric
-    health: 5
-    preferred_bait: undead
-    courage: 2
-    ability_text: "Undead deal 4 less damage to party"
-    copies: 12
-
   - id: hero_barbarian
     name: Barbarian
-    health: 8
+    icon: "🪓"
     preferred_bait: glory
-    courage: 2
-    ability_text: "All damage taken is reduced by half, rounded up."
+    starting_hp: 8
+    hp_level_increment: 2
+    self_damage_multiplier: 0.5
+    party_damage_reduction: 0
+    party_damage_reduction_level_increment: 0
+    damage_bait_filter: null
+    damage_room_type_filter: null
     copies: 12
 
   - id: hero_rogue
     name: Rogue
-    health: 6
+    icon: "🗡️"
     preferred_bait: riches
-    courage: 1
-    ability_text: "Traps deal 2 less damage to the party."
+    starting_hp: 6
+    hp_level_increment: 1
+    self_damage_multiplier: 1
+    party_damage_reduction: 2
+    party_damage_reduction_level_increment: 1
+    damage_bait_filter: null
+    damage_room_type_filter: trap
+    copies: 12
+
+  - id: hero_cleric
+    name: Cleric
+    icon: "✝️"
+    preferred_bait: undead
+    starting_hp: 5
+    hp_level_increment: 0.75
+    self_damage_multiplier: 1
+    party_damage_reduction: 4
+    party_damage_reduction_level_increment: 1
+    damage_bait_filter: undead
+    damage_room_type_filter: null
     copies: 12
 
   - id: hero_mage
     name: Mage
-    health: 4
-    preferred_bait: power
-    courage: 1
-    ability_text: "Arcane rooms deal 4 less damage to the party."
+    icon: "🔮"
+    preferred_bait: arcane
+    starting_hp: 4
+    hp_level_increment: 0.05
+    self_damage_multiplier: 1
+    party_damage_reduction: 4
+    party_damage_reduction_level_increment: 2
+    damage_bait_filter: arcane
+    damage_room_type_filter: null
     copies: 12

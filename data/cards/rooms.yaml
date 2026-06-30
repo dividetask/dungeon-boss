@@ -16,7 +16,7 @@ rooms:
     type: Creature
     damage: 4
     bait:
-      power: 1
+      arcane: 1
       glory: 1
     effect:
       grows_on_death: true
@@ -71,7 +71,7 @@ rooms:
     type: Basic Monster
     damage: 5
     bait:
-      power: 1
+      arcane: 1
     description: "Will o wisps prowl the hallway"
     ability_text: ""
     copies: 16
@@ -112,7 +112,7 @@ rooms:
     type: Basic Trap
     damage: 3
     bait:
-      power: 1
+      arcane: 1
     description: "Wild magic crackles through the air"
     ability_text: ""
     copies: 24
@@ -132,7 +132,7 @@ rooms:
     type: Basic Monster
     damage: 4
     bait:
-      power: 1
+      arcane: 1
     effect:
       draw_on_death: ability
     description: "Whenever a hero dies in this room, draw an ability card"
@@ -205,8 +205,8 @@ upgrades:
     name: Arcane Sigil
     bonus_damage: 2
     bait:
-      power: 1
-    description: "Adds a power bait icon and +2 damage to a room"
+      arcane: 1
+    description: "Adds an arcane bait icon and +2 damage to a room"
     copies: 15
 
   - id: upgrade_reinforced_walls
@@ -238,10 +238,10 @@ advanced_rooms:
     type: Trap
     damage: 0
     bait:
-      power: 2
+      arcane: 2
     effect:
       party_hits:
-        - match: { preferred_bait: power }
+        - match: { preferred_bait: arcane }
           amount: 4
     description: "All Mages in the party take 4 damage that cannot be reduced"
     copies: 11
@@ -301,7 +301,7 @@ advanced_rooms:
     type: Trap
     damage: 2
     bait:
-      power: 1
+      arcane: 1
     effect:
       discard_boost: { add_damage: 4 }
     description: "Discard a room card to increase this room's damage by 4"
