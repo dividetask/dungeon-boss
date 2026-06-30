@@ -35,13 +35,23 @@ include?(tag) ↦ tag (lowercased) in set
 union(other)  ↦ Tags(self ∪ other)
 ```
 
-### Boss / Room / Upgrade / Hero / AbilityCard
+### Boss / Room / Hero / AbilityCard
 ```
-Boss:    id, name, damage, bait:BaitIcons, effect:map, tags:Tags, ability_text
-Room:    id, name, type, damage, bait, description, effect:map, tags, advanced?
+Boss:    id, name, lead_damage, bait:BaitIcons, effect:map, tags:Tags, ability_text
+         # boss is an encounter that deals only lead damage (no level)
+Room:    id, name, type ("trap"|"monster"), bait, advanced?, description, tags,
+         lead_damage,  lead_damage_increment       # damage to highest-HP hero (cascades)
+         damage_all,   damage_all_increment        # damage to every hero
+         damage_rear,  damage_rear_increment       # damage to lowest-HP hero (cascades up)
+         damage_filter (mage|cleric|rogue|barbarian|nil)   # gates damage_all to a class
+         room_resist (nil|false|true)              # nil normal / false can't halve / true can't reduce
+         discard_lead_damage, discard_all_damage   # crawl-time discard boost (+N per card, stacks)
+         poison_damage, poison_persists, poison_ticks
+         grows_on_death?, draw_on_death?, room_aura:{match,amount}|nil
          trap?     ↦ type contains "trap"
          creature? ↦ type contains "monster" or "creature"
-Upgrade: id, name, bonus_damage, bait, description, tags;  type = "Upgrade"
+         channel value ↦ base + floor(increment * level)   # see PlacedRoom.level
+         # There are NO Upgrade cards.
 Hero:    id, name, icon, preferred_bait, starting_hp, starting_courage,
          hp_level_increment, self_damage_multiplier, party_damage_reduction,
          party_damage_reduction_level_increment,
@@ -57,16 +67,17 @@ AbilityCard: id, name, text, effect:map, tags
 Cards with the same definition are built as **distinct objects** (so two copies
 of one card never collapse into one); identity matters in a party/crawl.
 
-### PlacedRoom  (a Room in a dungeon: base + optional upgrade + grow + level)
+### PlacedRoom  (a Room in a dungeon: base + level + granted bait)
 ```
-new(base_room, upgrade=nil); grow = 0; level = 0   # grow & level are permanent
-damage ↦ base_room.damage + (upgrade ? upgrade.bonus_damage : 0) + grow
-bait   ↦ base_room.bait merged with upgrade.bait AND any bait granted by
-         room-card upgrades (counts added)
-tags   ↦ base_room.tags ∪ (upgrade ? upgrade.tags : ∅)
-upgrade_with(room_card): bait += room_card.bait; level += room_card.advanced? ? 2 : 1
-         # the gameplay effect of `level` is built on another branch
-effect, type, trap?, creature?, id, name ↦ delegate to base_room
+new(base_room); level = 0                          # level is permanent
+lead_damage ↦ base.lead_damage + floor(base.lead_damage_increment * level)
+damage_all  ↦ base.damage_all  + floor(base.damage_all_increment  * level)
+damage_rear ↦ base.damage_rear + floor(base.damage_rear_increment * level)
+bait   ↦ base_room.bait merged with any bait granted by room-card upgrades
+tags   ↦ base_room.tags
+upgrade_with(room_card): granted_bait += room_card.bait; level += room_card.advanced? ? 2 : 1
+grow-on-death and upgrades BOTH raise `level`; every channel scales with it.
+type, trap?, creature?, flags, id, name ↦ delegate to base_room
 ```
 
 ---
@@ -98,18 +109,11 @@ self_bonus(points)       ↦ self_per_point * points         # boss's own +per p
 room_bonus(room, points) ↦ Σ room_bonuses.bonus(room, points)
 ```
 
-### RoomEffect.for(encounter) ↦ Spec   (boss/plain room ↦ do-nothing Spec)
+### RoomEffect   (helpers over a room's flat fields; the resolver reads most fields directly)
 ```
-Spec(effect_map):
-    auras       = effect_map.room_auras.map(Aura)
-    party_hits  = effect_map.party_hits.map(PartyHit)     # {match, amount}
-    poisons_on_hit?, grows_on_death?, unreducible? = booleans
-    next_room_damage = effect_map.next_room_damage (int, 0 = none)
-    draws_on_death   = effect_map.draw_on_death ("ability" | "room" | none)
-    discard_boost = effect_map.discard_boost (map) or none
-aura_bonus(room, points) ↦ Σ auras.bonus(room, points)    # to OTHER rooms
-party_hits(alive)        ↦ for each rule, [hero, amount] for each matching alive hero
-boostable?               ↦ discard_boost present
+boostable(e)              ↦ e.discard_lead_damage > 0 OR e.discard_all_damage > 0
+boost_amount(e)           ↦ e.discard_all_damage if > 0 else e.discard_lead_damage
+aura_bonus(src, tgt, pts) ↦ Aura(src.room_aura).bonus(tgt, pts)   # 0 if no aura / no match
 ```
 
 ### AbilityEffect.for(card) ↦ Spec
@@ -133,12 +137,14 @@ filter_matches?(hero, encounter):           # does the party aura apply here?
 party_reduction(member, encounter):
     filter_matches?(member, encounter) ? member.party_reduction : 0   # uses member.level
 
-damage_taken(target, encounter, alive_members, base):
+damage_taken(target, encounter, alive_members, base, resist = NORMAL):
+    if resist == NO_REDUCE: ↦ max(base, 0)   # "cannot be reduced" / poison / Expose Weakness
     dmg = base
     for member in alive_members:             # PARTY auras stack across members
         dmg = max(dmg - party_reduction(member, encounter), 0)
-    dmg = ceil(dmg * target.self_damage_multiplier)   # self mult last, rounded up
-    ↦ max(dmg, 0)                            # auras first, then self multiplier last
+    if resist == NORMAL:                     # NO_HALVE ("cannot be halved") skips the self multiplier
+        dmg = ceil(dmg * target.self_damage_multiplier)   # self mult last, rounded up
+    ↦ max(dmg, 0)
 ```
 
 ### CrawlModifiers  (per-crawl, keyed by encounter index; reset each crawl)
@@ -169,8 +175,7 @@ empty_slots ↦ indices where slots[i] is nil
 occupied    ↦ PlacedRooms in slot order (skips empties)
 full? ↦ no empty slots
 place_room(i, room) ↦ old PlacedRoom or nil:               # empty fills, occupied replaces
-    old = slots[i]; slots[i] = PlacedRoom(room); ↦ old     # caller discards old + its upgrade
-apply_upgrade(i, upgrade) ↦ previous upgrade (or nil)      # one dedicated upgrade per room
+    old = slots[i]; slots[i] = PlacedRoom(room); ↦ old     # caller discards old
 upgrade_room_with(i, room_card): slots[i].upgrade_with(room_card)   # bait + level
 encounters() ↦ occupied (left→right) followed by the boss
 ```
@@ -217,7 +222,7 @@ load(path):
                                : parse the single file
     expand each list into model objects, repeating `copies` (default 1) as
     DISTINCT instances; assert ids unique within a category
-exposes: bosses, rooms, upgrades, advanced_rooms (advanced:true), heroes, ability_cards
+exposes: bosses, rooms, advanced_rooms (advanced:true), heroes, ability_cards
 ```
 
 ---
@@ -233,36 +238,44 @@ enticement(dungeon, bait) ↦ Σ over (rooms + boss) of source.bait.count(bait)
 ```
 resolve(party, dungeon, boss_bonus=owner_points, modifiers):
   health = {hero ↦ hero.max_hp}; alive = party.heroes; dead = []; log = []  # full LEVELLED HP
-  poison = {}; delayed = {}; draws = {}      # delayed/draws: see below
+  poison = {}; delayed = {}; draws = {}      # poison: persisting per-room; delayed: one-shot next room
   for (encounter, i) in dungeon.encounters:
      break if alive empty
      break if modifiers.retreats_at?(i)          # Retreat: turn back here
      room_index = i;  deaths_here = 0
-     poison_tick:   each alive poisoned hero takes poison[hero] (unreducible)
-     delayed_tick:  each alive hero with delayed[hero]>0 takes it (unreducible), then clear it
-     party_hits:    for [hero, amt] in RoomEffect(encounter).party_hits(alive): hit unreducible
-     single_target: base = effective_base(encounter)
-                    if base > 0:
-                        eff = RoomEffect(encounter)
-                        reducible = modifiers.reducible?(i) and not eff.unreducible?   # room-level unreducible
-                        target = alive max by (current health, then max health, then order)
-                        dealt  = hit(target, base, reducible)
-                        if dealt>0 and eff.poisons_on_hit?: poison[target] += 1
-                        if dealt>0 and eff.next_room_damage>0: delayed[target] += eff.next_room_damage
-     grow:          if RoomEffect(encounter).grows_on_death? and deaths_here>0: encounter.grow += deaths_here
-     death_draws:   deck = RoomEffect(encounter).draws_on_death; if deck and deaths_here>0: draws[deck] += deaths_here
+     ticks = encounter.poison_ticks               # Maze = 3, else 1
+     poison_tick:   each alive poisoned hero takes poison[hero] × ticks (unreducible)
+     delayed_tick:  each alive hero with delayed[hero]>0 takes it × ticks (unreducible), then clear
+     lead, all, rear = channels(encounter)        # base+floor(inc*level), boss/aura/mod folded into primary
+     resist = resist_mode(encounter)              # NO_REDUCE if mods unreducible OR room_resist=true;
+                                                  #   NO_HALVE if room_resist=false; else NORMAL
+     damage_all: if all>0: targets = damage_filter ? alive of that class : alive
+                          for hero in targets: hit_with_poison(hero, all, resist)
+     lead:       if lead>0: cascade(lead, resist, pick = highest current health)   # overkill spills
+     rear:       if rear>0: cascade(rear, resist, pick = lowest current health)
+     grow:       if encounter.grows_on_death? and deaths_here>0: encounter.level += deaths_here
+     death_draws:if encounter.draw_on_death? and deaths_here>0: draws["room"] += deaths_here;
+                                                                 draws["ability"] += deaths_here
   ↦ {participants, log, deaths, dead_heroes, survivors=alive, draws}
 
-effective_base(encounter):
-     if modifiers.zero?(i): ↦ 0
-     base = modifiers.set?(i) ? modifiers.set_value(i) : encounter.damage
-     if encounter is boss: base += BossEffect(boss).self_bonus(boss_bonus)
-     else:                 base += BossEffect(boss).room_bonus(encounter, boss_bonus)
-     base += Σ over other rooms r: RoomEffect(r).aura_bonus(encounter, boss_bonus)   # Trap Makers/Beast Tamer
-     ↦ base + modifiers.bonus(i)                                                     # ability +dmg / boost
+channels(encounter):                              # the room's three damage channels at its level
+     if modifiers.zero?(i): ↦ (0,0,0)
+     lead, all, rear = encounter.lead_damage, encounter.damage_all, encounter.damage_rear
+     ext = (encounter is boss ? BossEffect(boss).self_bonus(boss_bonus)
+                              : BossEffect(boss).room_bonus(encounter, boss_bonus)
+                                + Σ other rooms r: RoomEffect.aura_bonus(r, encounter, boss_bonus))
+           + modifiers.bonus(i)                    # ability +dmg / crawl-time discard boost
+     fold ext (and modifiers.set override) into the PRIMARY channel (first of lead/all/rear used)
+     ↦ (lead, all, rear)
 
-hit(hero, amount, reducible):
-     dmg = reducible ? HeroAbility.damage_taken(hero, encounter, alive, amount) : amount
+hit_with_poison(hero, amount, resist):
+     dealt = hit(hero, amount, resist)
+     if dealt>0 and encounter.poison_damage>0:
+         (encounter.poison_persists ? poison : delayed)[hero] += encounter.poison_damage
+     ↦ dealt
+
+hit(hero, amount, resist):
+     dmg = HeroAbility.damage_taken(hero, encounter, alive, amount, resist)
      health[hero] -= dmg; log the step; if health<=0: move hero alive→dead, deaths_here++
      ↦ dmg
 ```
@@ -277,8 +290,7 @@ bait_totals / all_bait_totals ↦ per-type sums across rooms+boss
 ```
 choose(decision):
     build_room    → randomly: nothing / place a room into a random slot (empty or
-                    replacing) / attach a dedicated upgrade / spend a room card to
-                    upgrade a placed room (bait + level)
+                    replacing) / spend a room card to upgrade a placed room (bait + level)
     discard_rooms → randomly discard 0..2 hand cards
     else          → a random option
 ```
@@ -324,9 +336,8 @@ draw_for(game, player, discarded_count):
 ### BuildPhase
 ```
 place(game, player, card_id, target):
-    upgrade_card      → dungeon.apply_upgrade(slot); discard any replaced upgrade
     upgrade_with_room → dungeon.upgrade_room_with(slot, room_card); discard the spent card
-                        #   grants bait + level (effect of level: another branch)
+                        #   grants bait + level; each level scales the damage channels
     advanced room     → empty slot: place; occupied slot: require ≥1 shared bait, replace (discard old)
     basic room        → place into the chosen slot (empty fills, occupied replaces/discards)
 ```
@@ -421,7 +432,7 @@ send_next_party():                   # the "Send party" button
     outcome = GauntletPhase.resolve_party(self, owner, party, modifiers)
     last_outcomes = [outcome]
     attacked_owners << owner; crawl_survivors += outcome.result.survivors   # for Recharge
-    apply_death_draws(owner, outcome.result)   # Soul Siphon / Unhallowed Ground
+    apply_death_draws(owner, outcome.result)   # draw-on-death rooms: 1 room + 1 ability per death
     current_crawl = nil
     if Scoreboard.over?(players): winner = Scoreboard.winner(players, owner); stage=over
     else: advance_to_next_crawl       # next party's courage re-checked vs new points
@@ -441,9 +452,9 @@ play_ability(player, card_id, target):     # before/instead of a crawl
     if current crawl and target is a room: add_damage / unreducible! / zero! / retreat! at that index
     draw 2 rooms if draw_rooms;  discard the card
 
-boost_room(card_id, room_index):     # dungeon owner discards to boost a room
-    return if room already boosted; discard the chosen hand card
-    apply discard_boost spec: add_damage(+N) / set_damage / unreducible!
+boost_room(card_id, room_index):     # dungeon owner discards to boost a boostable room
+    return unless RoomEffect.boostable(room); discard the chosen hand card
+    modifiers.add_damage(room_index, RoomEffect.boost_amount(room))   # stacks per card; this crawl only
 
 undo_discard(): if can_undo (a discard made, build step pending) →
     reclaim the discarded card(s) from the deck back into hand (and return the

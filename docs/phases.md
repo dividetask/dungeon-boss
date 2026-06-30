@@ -72,15 +72,16 @@ Each player **may** take one of these build actions (at most one per Build phase
 
 - **Place a room** into **any of the 5 slots**. Placing into an **empty** slot
   fills it; placing onto an **occupied** slot **replaces** that room (the
-  replaced room — and any upgrade on it — is discarded).
+  replaced room is discarded).
 - **Upgrade a room with a room card** — instead of placing it, spend a **basic or
   advanced room card** from hand to upgrade an existing placed room: the target
   room gains **every bait icon** of the spent card and its **level** rises by
-  **1** (basic) or **2** (advanced). The spent card is discarded. (The gameplay
-  effect of room level is being built on another branch; see
-  [cards.md](cards.md#room-level-upgrading-a-room-with-a-room-card).)
-- **Attach a dedicated Upgrade card** to a room (Glory Banner, Arcane Sigil, …).
-  Each room holds at most one such upgrade; attaching another replaces it.
+  **1** (basic) or **2** (advanced). The spent card is discarded. Each level adds
+  `increment` to the room's damage channels (see
+  [cards.md](cards.md#room-level-upgrading-a-room-with-a-room-card)).
+
+There are **no dedicated Upgrade cards** — upgrading is done by spending a room
+card as above.
 
 A dungeon holds **at most 5 rooms** (the boss does not count); when all 5 slots
 are occupied a new room can only be placed by **replacing** one.
@@ -139,9 +140,11 @@ consolidated in the Recharge phase.
 >   the party turns back there — rooms before it still resolve and score, the
 >   rest and the boss are skipped, and the owner takes no wound), Blueprints (the
 >   player draws 2 room cards).
-> - **Discard-to-boost** — the dungeon owner may, once per room, discard a room
->   card to add **+4 damage** to a Collapsing Tunnel / Golem / Necrotic Fog (on
->   top of any upgrade), or make a Troll unreducible.
+> - **Discard-to-boost** — the dungeon owner may discard room cards to temporarily
+>   raise a boostable room's damage for that crawl only. Each discarded card adds
+>   the room's `discard_lead_damage` / `discard_all_damage` (e.g. **+2** to
+>   Power Word or Undead Hands); boosts **stack** and do not change the room's
+>   level or bait.
 
 ### 7c. Gauntlet
 
@@ -150,23 +153,28 @@ slots), then the boss**. Parties are sent in **one at a time** (in a client the
 player advances each with the bottom button). The **boss deals extra damage equal
 to its owner's points** (before any reductions).
 
-For each encounter in order:
+Each encounter's damage channels are `base + floor(increment × level)`. For each
+encounter in order:
 
-1. **Poison tick** — each poisoned hero takes its poison stacks as unreducible
-   damage (from a Poison Gas room passed earlier).
-2. **Party-wide effects** — the room's effect may hit specific members with
-   unreducible damage: **Antimagic** (each Mage −4), **Zealots** (each Cleric
-   −4).
-3. **Single-target damage** — the room's damage (base + its grow bonus + dungeon
-   auras from **Trap Makers**/**Beast Tamer** + the boss's points bonus) hits the
-   highest-current-health member, reduced by living party auras
-   (`party_damage_reduction`) and the target's own `self_damage_multiplier` (ties:
-   most max health, then board order). A hero that takes damage from a **Poison
-   Gas** room gains a poison stack (so it loses 1 more unreducible health at every
-   later room).
-4. A hero at **0 or below** dies and is removed from the crawl; a
-   **grow-on-death** room (Succubus, Plague Zombie) gains +1 damage permanently
-   for each death there.
+1. **Poison** — each poisoned hero takes its poison damage (unreducible),
+   resolved **`poison_ticks`** times here (Maze = 3); one-shot poison (non-persisting)
+   lands once in the next room then clears, persisting poison lands every later room.
+2. **Damage All** — `damage_all` hits every hero (or only one class if
+   `damage_filter` is set, e.g. Antimagic → Mages, Zealots → Clerics). Each hit is
+   reduced independently.
+3. **Lead** — `lead_damage` hits the highest-current-health member; on a kill the
+   overkill cascades to the next-highest (ties: most max health, then board order).
+4. **Rear** — `damage_rear` hits the lowest-current-health (most injured) member,
+   cascading upward (Black Tentacles).
+
+The boss's points bonus, **Trap Makers / Beast Tamer** `room_aura`s, and per-crawl
+modifiers fold into the room's primary channel. `room_resist` controls reduction:
+`null` normal, `false` cannot be halved (the Barbarian's self multiplier is
+skipped), `true` cannot be reduced at all. A hero damaged by a room with
+`poison_damage` is poisoned. A hero at **0 or below** dies; a **grow-on-death**
+room (Succubus, Zombies, Gladiator, Troll, …) gains **+1 level** per death (so its
+channels scale up); a **draw-on-death** room earns its owner one room + one ability
+card per death.
 
 Scoring per Gauntlet:
 

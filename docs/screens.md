@@ -31,7 +31,7 @@ Every in-game screen stacks these regions top-to-bottom (the **Top bar** and
 │ hero / party cards (scroll →)     │ [Boss name | you/computer | ⚔ total |     │
 │                                   │  bait totals | 🪙 points · 🩸 wounds]      │
 ├──────────────────────────────────┴────────────────────────────────────────────┤
-│ Your hand            room/upgrade/advanced cards (scroll →)                    │
+│ Your hand            room / advanced room cards (scroll →)                     │
 │ Ability cards        ability cards (when you hold any)                         │
 ├────────────────────────────────────────────────────────────────────────────────┤
 │ Player N — dungeon (entrance on the left)                                      │
@@ -48,7 +48,7 @@ Every in-game screen stacks these regions top-to-bottom (the **Top bar** and
   bait totals, points and wounds; an eliminated player (5 wounds) is dimmed and
   marked `☠ eliminated`. Tapping one shows that player's dungeon below.
 - **Card damage** is shown as the effective total with a small breakdown line
-  (`5 + 2 + 2` = base + upgrade + aura). Points-based bonuses are hidden while a
+  (`5 + 2 + 2` = base + aura + boost). Points-based bonuses are hidden while a
   crawl is in progress.
 
 ---
@@ -92,7 +92,7 @@ rooms are tappable (the first placement must be a room).
 
 ```
 │ Player 1: choose a room to place beside your boss                              │
-│ Your hand:  [Room]* [Room]* [Upgrade] [Advanced]   (* = tappable)              │
+│ Your hand:  [Room]* [Room]* [Room] [Advanced]   (* = tappable)                 │
 │ Advance bar: "Tap a card to choose"                                            │
 ```
 
@@ -120,9 +120,9 @@ Decision `build_room`. Tap a hand card, then tap a slot in your dungeon:
   replaces that room;
 - an **advanced room** may fill an empty slot, or replace a room sharing one of
   its bait icons;
-- a dedicated **upgrade** card attaches to a room;
-- alternatively, tap **Upgrade** on a placed room then a **room card** to spend it
-  (the room gains that card's bait icons and a level).
+- to **upgrade**, tap **Upgrade** on a placed room then a **room card** to spend
+  it (the room gains that card's bait icons and a level). There are no dedicated
+  upgrade cards.
 
 ```
 │ Player 1: place a room, upgrade a room, or build nothing                       │
@@ -167,7 +167,7 @@ to each hero.
 │ Crawl breakdown                                                                │
 │ ⚔ <Party> → <Owner>'s dungeon                                                  │
 │ ┌ Encounter        Hero       Damage   HP ───────────────────────────────────┐│
-│ │ Stone Ball        Barbarian   −3      8 → 5                                  ││
+│ │ Floor Spike       Barbarian   −3      8 → 5                                  ││
 │ │ Malevolent Spirit Barbarian   −11     5 → 0 💀                               ││
 │ └──────────────────────────────────────────────────────────────────────────  ┘│
 │ → <Owner> gains N points, 1 wound. Survivors: …                                │

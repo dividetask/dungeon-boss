@@ -11,8 +11,8 @@ described here. When a rule changes, change it here first.
 - **[phases.md](phases.md)** — The turn structure: Setup, then Arrival, Discard,
   Draw, Build, Crawl (Entice → Ability → Gauntlet), and Recharge, with the exact
   resolution rules.
-- **[cards.md](cards.md)** — Card types (boss, room, upgrade, advanced room,
-  hero, ability), their fields, **tags**, the bait system, and the
+- **[cards.md](cards.md)** — Card types (boss, room, advanced room, hero,
+  ability), the **flat room field schema**, **tags**, the bait system, and the
   `data/cards/` schema (one file per category).
 - **[architecture.md](architecture.md)** — The canonical list of classes and
   their single responsibilities, plus a **client-parity** table tracking what
@@ -35,10 +35,12 @@ The game is currently resolved using:
   scale with each hero's **level** (gained by surviving crawls); a self-damage
   multiplier protects the hero itself. All read from the hero YAML — no per-id code.
 - **5-slot dungeon + room-card upgrades** — rooms occupy any of 5 slots; spending
-  a room card upgrades a placed room (grants bait + a room **level**, whose effect
-  is on a separate branch).
-- **Advanced rooms and upgrades** — `effect`-driven room behaviour; upgrades
-  attach to rooms.
+  a room card upgrades a placed room (grants bait + a room **level** that scales
+  the room's damage channels by its increments).
+- **Advanced rooms** — drawn from the build deck (seeded into the discard pile so
+  they can't be in an opening hand); placed by replacing a bait-sharing room.
+- **Flat room schema** — lead/all/rear damage with per-level increments, a
+  three-way resist, a class damage filter, and unified poison. No Upgrade cards.
 - **Boss effects** — `effect`-driven boss behaviour (e.g. Goblin Chieftain).
 - **Ability cards** — drawn in Recharge by un-attacked players and played during
   the crawl's Ability step to alter it.

@@ -15,9 +15,8 @@ keeps the responsibilities identical.
 | `Bait`         | The set of valid bait types and validation of a bait name.            |
 | `BaitIcons`    | An immutable count of icons per bait type; answers "how many of X?".  |
 | `Tags`         | An immutable, lowercased set of classification tags; answers "has X?". |
-| `Boss`         | One boss card's data: id, name, damage, bait, `effect`, tags.         |
-| `Room`         | One room card's data: id, name, type, damage, bait, `effect`, tags, `advanced`. |
-| `Upgrade`      | A room-card type that attaches to a room (bonus damage / bait / tags).  |
+| `Boss`         | One boss card's data: id, name, `lead_damage`, bait, `effect`, tags.   |
+| `Room`         | One room card's **flat-field** data: id, name, type, bait, lead/all/rear damage (+per-level increments), resist, filter, poison, grow/draw flags, `room_aura`, `advanced`. No Upgrade cards. |
 | `Hero`         | One hero card's **data-driven** stats: id, name, icon, preferred bait, starting HP, hp/level increment, self-damage multiplier, party reduction (+per-level), bait/room-type damage filters, tags. Derives max HP / courage / party reduction from its **level**. |
 | `AbilityCard`  | One ability card's data: id, name, text, `effect`, tags.              |
 
@@ -31,7 +30,7 @@ keyed by `effect` (bosses/rooms/ability cards) or, for heroes, by the hero's own
 | Class         | Responsibility                                                         |
 |---------------|------------------------------------------------------------------------|
 | `CardLibrary` | Loads the `data/cards/` files and exposes the full pools of bosses, rooms, |
-|               | upgrades, advanced rooms, heroes, and ability cards as model objects.  |
+|               | advanced rooms, heroes, and ability cards as model objects.            |
 |               | Expands `copies` into distinct instances and validates ids.            |
 
 ## Game state
@@ -47,9 +46,9 @@ keyed by `effect` (bosses/rooms/ability cards) or, for heroes, by the hero's own
 | `Player`   | A participant: their dungeon, hand of room cards, points, and wounds.     |
 | `Party`    | One or more heroes who bait, crawl, and score together (a lone hero is a  |
 |            | party of one). Holds combined courage, board order, and a generated name. |
-| `PlacedRoom` | A room as it sits in a dungeon: a base `Room` plus at most one          |
-|            | `Upgrade`, a grow bonus, and a `level` (raised by spending room cards to  |
-|            | upgrade it — grants bait + level); exposes effective damage and bait.     |
+| `PlacedRoom` | A room as it sits in a dungeon: a base `Room` plus a `level` (raised by   |
+|            | spending room cards to upgrade it, and by grow-on-death) and any bait      |
+|            | granted by upgrades; exposes the level-scaled damage channels and bait.    |
 | `Scoreboard` | Decides whether the game is over and who won (10 points / 5 wounds /     |
 |            | points − 2×wounds).                                                       |
 | `Decision` | A choice the game is waiting on a player to make (which boss to keep,     |
@@ -119,8 +118,8 @@ uses this to make Player 2 a random computer opponent.
 | `DiscardPhase` | Apply each player's choice to discard **0–2** room cards.             |
 | `DrawPhase`    | Draw **1 + (cards discarded)** room cards for each player (cap 6). (Automatic.) |
 | `BuildPhase`   | Apply the player's choice: place a room into any of the 5 slots       |
-|                | (empty fills / occupied replaces), upgrade a room with a basic/       |
-|                | advanced room card (bait + level), attach a dedicated upgrade, or skip. |
+|                | (empty fills / occupied replaces), spend a basic/advanced room card to |
+|                | upgrade a placed room (grants its bait + a level), or skip.           |
 | `EnticePhase`  | *(was `BaitPhase`)* `target_for(party)`: the dungeon a party enters   |
 |                | **right now** (most enticing by combined bait, and combined courage ≥ |
 |                | that owner's current points), or nil to wait. Evaluated per party as  |
@@ -152,7 +151,7 @@ SetupPhase       → deal hands + boss candidates → player Decisions (boss, fi
 ArrivalPhase     → town heroes (one per player), each at level floor(round/4)
 DiscardPhase     → player Decisions (discard 0–2 rooms)
 DrawPhase        → draw 1 + (#discarded) rooms each (cap 6)
-BuildPhase       → player Decisions (place into any slot / upgrade a room / attach upgrade / skip)
+BuildPhase       → player Decisions (place into any slot / upgrade a room with a room card / skip)
 Crawl            → for each party (town order): EnticePhase.target_for (current
                    points) → if it enters, Ability step (abilities/boost) →
                    GauntletPhase (PartyCrawlResolver) → points per death, one
@@ -172,11 +171,13 @@ RechargePhase    → each un-attacked player draws an ability card; consolidate 
 > being updated** for this overhaul, so the parity column below reflects the
 > *previous* rule set for the systems that pre-date it.
 
-The **Android client (`android/`)** carries a small interpreter for each
-declarative effect (`Effects` `Selector`/`Aura`, `BossEffect`, `RoomEffect`,
-`AbilityEffect`), the per-party Crawl loop, the pre-Gauntlet interaction layer
-(ability cards, discard-to-boost, undo), advanced rooms, upgrades, quiet rounds,
-and 2–4 players.
+The **Android client (`android/`)** implements the **flat card field schema** and
+the **room-level gameplay effect** (lead/all/rear damage with per-level
+increments, three-way resist, damage filter, unified poison + Maze ticks,
+grow-on-death-as-level, draw-on-death), the boss `effect`/`room_aura` interpreters
+(`Effects`, `BossEffect`, `RoomEffect`), the per-party Crawl loop, the
+pre-Gauntlet interaction layer (ability cards, crawl-time discard-boost, undo),
+advanced rooms, quiet rounds, and 2–4 players. There are no Upgrade cards.
 
 | Rule / system | Reference (webapp) | Android | Spec |
 |---------------|--------------------|---------|------|
@@ -184,7 +185,8 @@ and 2–4 players.
 | `RoomEffect` (advanced-room crawl effects, declarative) | ✅ | ✅ | poison gas, antimagic, zealots, grow-on-death, trap/creature auras |
 | `AbilityEffect` (ability cards, declarative) + pre-Gauntlet play | ✅ | ✅ | [phases.md](phases.md#7b-ability) |
 | Advanced rooms: data + placement + `advanced_rooms` pool | ✅ | ✅ | [phases.md](phases.md#6-build) |
-| Upgrades attaching to rooms | ✅ | ✅ | [cards.md](cards.md) |
+| Flat card field schema (lead/all/rear, resist, poison, filter) | — | ✅ (this branch) | [cards.md](cards.md#room-card-flat-field-schema) |
+| Room **level** gameplay effect (increments; grow/upgrade raise it) | — | ✅ (this branch) | [cards.md](cards.md#room-level-upgrading-a-room-with-a-room-card) |
 | `CrawlModifiers` (discard-to-boost, ability effects) | ✅ | ✅ | — |
 | Recharge consolidates **all** waiting parties (not just afraid) | ✅ | ✅ | [phases.md](phases.md#8-recharge) |
 | Per-party Entice+Crawl (courage re-checked per party as points rise) | ✅ | ✅ | [phases.md](phases.md#7-crawl) |
@@ -194,7 +196,7 @@ and 2–4 players.
 | 2–4 players (1 human + up to 3 computers) | ✅ | ✅ | [phases.md](phases.md) |
 | **Arcane** bait (renamed from Power) | — | pass 2 | [cards.md](cards.md#bait) |
 | **Data-driven levelling heroes** (HP/courage/reduction by level) | — | pass 2 | [cards.md](cards.md#hero-card) |
-| **5-slot dungeon** + room-card upgrades (bait + level) | — | pass 2 | [phases.md](phases.md#6-build) |
+| **5-slot dungeon** + room-card upgrades (bait + level) | — | ✅ (this branch) | [phases.md](phases.md#6-build) |
 | **Discard 0–2 / Draw 1+discards** | — | pass 2 | [phases.md](phases.md#4-discard) |
 
 **Shared data, two copies.** Both clients read the card files in `data/cards/`

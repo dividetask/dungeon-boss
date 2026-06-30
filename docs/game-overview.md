@@ -11,9 +11,10 @@ Each card type is fully specified in [cards.md](cards.md). In brief:
 - **Boss cards** — the back of your dungeon. Each has **bait icons**, a
   **damage amount**, and optionally an **effect** (e.g. the Goblin Chieftain).
   A boss deals **+1 damage per point** its owner has scored.
-- **Room cards** — the body of your dungeon. Each has a **damage amount**,
-  **bait icons**, and a **room type**. **Advanced rooms** add a special
-  **effect**; **upgrades** attach to a room to boost it.
+- **Room cards** — the body of your dungeon. Each has **damage** (to the lead
+  hero, all heroes, and/or the most-injured hero), **bait icons**, and a **room
+  type**. **Advanced rooms** are stronger. A room can be **upgraded** by spending
+  another room card during Build (granting its bait + raising the room's level).
 - **Hero cards** — the adventurers who crawl dungeons. Each is **data-driven**:
   a **preferred bait**, **starting HP**, and per-level scaling for HP, **courage**,
   and a **party damage reduction** (plus a self-damage multiplier). A hero gains
