@@ -73,7 +73,7 @@ import com.dungeonboss.model.Upgrade
 import kotlinx.coroutines.delay
 
 /** Bump this every UI change so the on-screen tag confirms which build is running. */
-const val UI_BUILD = "44 (tutorial; Share log top-right; end-game bonus)"
+const val UI_BUILD = "45 (keep ☰ on-screen; hide stats strip when menu open)"
 
 /** What the human has tapped in hand while building, awaiting a dungeon slot. */
 private data class Selection(val cardId: String, val isUpgrade: Boolean)
@@ -299,18 +299,29 @@ private fun TopBar(
                 Text("Dungeon Boss", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 statusText?.let { Text(it, fontSize = 12.sp, color = Palette.SubText, modifier = Modifier.padding(bottom = 3.dp)) }
             }
-            // Push the per-player stats strip to the right, against the ☰ toggle.
-            Spacer(Modifier.weight(1f))
-            if (game != null && human != null) {
+            // The stats strip takes the flexible middle and scrolls if it would
+            // overflow (e.g. 4 players), so the Share log and ☰ controls always
+            // stay on-screen. It is hidden while the menu is open to leave room
+            // for those controls — the menu's own rows are what matter then.
+            if (game != null && human != null && !showMenu) {
                 // key(tick): these read off the stable Player objects, which
                 // Compose would otherwise skip.
-                key(tick) { PlayerStatsStrip(game, human, onClick = onShowStandings) }
+                key(tick) {
+                    Box(
+                        Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        PlayerStatsStrip(game, human, onClick = onShowStandings)
+                    }
+                }
+            } else {
+                Spacer(Modifier.weight(1f))
             }
             // Share log sits in the top-right, just left of the ☰ toggle. It is
             // only shown when the menu is revealed (showMenu): always on the Load
             // screen (no game in progress) and on any screen once ☰ is pushed.
             if (showMenu) {
-                OutlinedButton(onClick = onShareLog) { Text("Share log", fontSize = 13.sp) }
+                OutlinedButton(onClick = onShareLog) { Text("Share log", fontSize = 13.sp, maxLines = 1) }
             }
             Box(
                 Modifier
