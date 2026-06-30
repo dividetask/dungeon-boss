@@ -57,8 +57,12 @@ import kotlinx.coroutines.delay
  * returns to the screen underneath (the Load screen when launched there).
  */
 
-/** What, if anything, animates on a step to draw the eye. */
-private enum class Highlight { NONE, FLASH_ALL_BAIT, CYCLE }
+/**
+ * What, if anything, animates on a step to draw the eye.
+ *  - CYCLE        spotlights each hero and its preferred bait in the rooms
+ *  - CYCLE_TOTALS spotlights each hero and its bait in the top-right totals strip
+ */
+private enum class Highlight { NONE, FLASH_ALL_BAIT, CYCLE, CYCLE_TOTALS }
 
 /** A party about to crawl a dungeon, with its (dry-run) predicted outcome. */
 private class CrawlView(val party: Party, val prediction: PartyCrawlResolver.Result)
@@ -100,7 +104,7 @@ fun TutorialScreen(onExit: () -> Unit) {
     }
 
     // The spotlight cycles through a step's heroes (steps 4–5).
-    val cycling = step.highlight == Highlight.CYCLE
+    val cycling = step.highlight == Highlight.CYCLE || step.highlight == Highlight.CYCLE_TOTALS
     val cycleCount = step.cycleHeroes.size.coerceAtLeast(1)
     var cycle by remember(index) { mutableStateOf(0) }
     LaunchedEffect(index, cycleCount) {
@@ -113,11 +117,14 @@ fun TutorialScreen(onExit: () -> Unit) {
     }
 
     val activeHero = if (cycling) step.cycleHeroes.getOrNull(cycle) else null
+    // CYCLE highlights the bait in the rooms; CYCLE_TOTALS highlights it in the
+    // top-right totals strip instead (rooms left alone).
     val baitHighlight: Set<Bait> = when (step.highlight) {
         Highlight.FLASH_ALL_BAIT -> Bait.entries.toSet()
         Highlight.CYCLE -> activeHero?.let { setOf(it.preferredBait) } ?: emptySet()
-        Highlight.NONE -> emptySet()
+        else -> emptySet()
     }
+    val totalsBait: Bait? = if (step.highlight == Highlight.CYCLE_TOTALS) activeHero?.preferredBait else null
     val highlightHeroId = activeHero?.id
     val human = step.game.players.first { it.name == HUMAN }
 
@@ -142,9 +149,9 @@ fun TutorialScreen(onExit: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("Dungeon Boss", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("· Tutorial", fontSize = 12.sp, color = Palette.SubText)
+                Text("· Tutorial ${index + 1}/${steps.size}", fontSize = 12.sp, color = Palette.SubText)
                 Spacer(Modifier.weight(1f))
-                PlayerStatsStrip(step.game, human)
+                PlayerStatsStrip(step.game, human, highlightBait = totalsBait, glow = glow)
                 Box(
                     Modifier
                         .clip(RoundedCornerShape(6.dp))
@@ -278,12 +285,15 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
         return g
     }
 
-    // Only Player 1 has a dungeon, so town heroes are unambiguously lured to it
-    // (no bait ties) — used for the courage / party steps where timidity matters.
+    // Player 1 holds the showcase dungeon; Player 2 gets a deliberately weak one
+    // (strictly less of every bait), so town heroes are unambiguously lured to
+    // Player 1 — and thus timid — for the courage / party steps. Player 2 still
+    // needs *a* dungeon: the bait math force-unwraps every living player's.
     fun soloGame(points: Int): Game {
         val g = newGame()
-        g.players[0].dungeon = showcase()
+        g.players[0].dungeon = showcase() // glory 2, riches 1, undead 2, power 2
         g.players[0].points = points
+        g.players[1].dungeon = dungeon("boss_lich", listOf("room_goblins")) // glory 1, undead 1, power 1
         return g
     }
 
@@ -333,7 +343,7 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
     g5.players[0].roomHand.addAll(handCards())
     val s5 = TutorialStep(
         "Each hero will take turns, starting with the left most hero, crawling through a dungeon. The hero will only go to a dungeon if that dungeon has more of the hero's preferred bait than the other dungeons. If there is a tie then the hero will stay in town. At the top right of the screen we can see each player's bait totals.",
-        g5, highlight = Highlight.CYCLE, cycleHeroes = cycleHeroes
+        g5, highlight = Highlight.CYCLE_TOTALS, cycleHeroes = cycleHeroes
     )
 
     // 6 — crawl room by room; the hero dies

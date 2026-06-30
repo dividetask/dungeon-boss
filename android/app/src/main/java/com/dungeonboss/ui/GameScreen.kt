@@ -73,7 +73,7 @@ import com.dungeonboss.model.Upgrade
 import kotlinx.coroutines.delay
 
 /** Bump this every UI change so the on-screen tag confirms which build is running. */
-const val UI_BUILD = "47 (tutorial rebuilt on the real game board components)"
+const val UI_BUILD = "48 (tutorial: step counter, totals highlight, crash fix)"
 
 /** What the human has tapped in hand while building, awaiting a dungeon slot. */
 // internal (not private) so the reusable internal GameBody can name it.
@@ -814,7 +814,14 @@ internal fun baitTotal(player: Player, bait: Bait): Int =
  * unchanged by the tutorial so both read identically. [onClick] opens standings.
  */
 @Composable
-internal fun PlayerStatsStrip(game: Game, human: Player, onClick: (() -> Unit)? = null) {
+internal fun PlayerStatsStrip(
+    game: Game,
+    human: Player,
+    onClick: (() -> Unit)? = null,
+    // Tutorial-only: ring the given bait's totals (opacity tracks [glow]).
+    highlightBait: Bait? = null,
+    glow: Float = 1f
+) {
     Row(
         Modifier
             .clip(RoundedCornerShape(8.dp))
@@ -825,7 +832,16 @@ internal fun PlayerStatsStrip(game: Game, human: Player, onClick: (() -> Unit)? 
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Bait.entries.forEach { b ->
-            PlayerStat(game, human, CardArt.baitEmoji[b].orEmpty()) { baitTotal(it, b) }
+            val lit = b == highlightBait
+            Box(
+                if (lit) Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .border(2.dp, Palette.Highlight.copy(alpha = glow), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 3.dp)
+                else Modifier
+            ) {
+                PlayerStat(game, human, CardArt.baitEmoji[b].orEmpty()) { baitTotal(it, b) }
+            }
         }
         PlayerStat(game, human, "⚔") { playerDamage(game, it) }
         PlayerStat(game, human, "🪙") { it.points }
