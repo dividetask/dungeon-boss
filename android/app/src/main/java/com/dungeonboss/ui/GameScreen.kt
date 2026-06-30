@@ -313,6 +313,12 @@ private fun TopBar(
                     }
                 }
             }
+            // Share log sits in the top-right, just left of the ☰ toggle. It is
+            // only shown when the menu is revealed (showMenu): always on the Load
+            // screen (no game in progress) and on any screen once ☰ is pushed.
+            if (showMenu) {
+                OutlinedButton(onClick = onShareLog) { Text("Share log", fontSize = 13.sp) }
+            }
             Box(
                 Modifier
                     .clip(RoundedCornerShape(6.dp))
@@ -327,7 +333,7 @@ private fun TopBar(
 
         if (showMenu) {
             Text("UI build $UI_BUILD", fontSize = 10.sp, color = Palette.SubText)
-            // New game + Share log on their own line underneath the title.
+            // New game on its own line underneath the title.
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button(
                     onClick = { onNewGame(players) },
@@ -335,7 +341,6 @@ private fun TopBar(
                 ) {
                     Text("New game", color = Color.White)
                 }
-                OutlinedButton(onClick = onShareLog) { Text("Share log", fontSize = 13.sp) }
             }
             // Player count selector.
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {

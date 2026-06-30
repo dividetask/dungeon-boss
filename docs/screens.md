@@ -8,7 +8,7 @@ and states. This document describes each screen; the rules behind them live in
 A round flows through these states:
 
 ```
-Home → Setup (choose boss → place first room) → READY
+Load → Setup (choose boss → place first room) → READY
   └─ loop: Build (discard → place/skip) → Bait+Crawl (send parties / pre-crawl)
            or Quiet (no heroes attacked) → READY → …
   └─ Game over
@@ -21,7 +21,8 @@ Every in-game screen stacks these regions top-to-bottom (the **Top bar** and
 
 ```
 ┌─ Top bar ───────────────────────────────────────────────────────────────────┐
-│ Dungeon Boss                              Players <2|3|4 ▾>  [ New game ]     │
+│ Dungeon Boss · Round <n> · <stage>      [per-player totals strip]  [Share log] [☰] │
+│ ░ menu (revealed by ☰): UI build · [ New game ] · Players <2|3|4>             │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ Round <n> · <stage>                                                           │
 │ [ decision banner — the current prompt, when one is pending ]                 │
@@ -43,6 +44,13 @@ Every in-game screen stacks these regions top-to-bottom (the **Top bar** and
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+- **Menu (☰)** sits at the far right of the Top bar. During a game the menu is
+  collapsed; tapping ☰ reveals it (UI build, **New game**, **Players** selector).
+  On the **Load screen** (no game in progress) the menu is always open.
+- **Share log** sits in the Top bar's top-right corner, immediately to the left
+  of the ☰ toggle. It is hidden on every screen **except** when the menu is
+  revealed — i.e. on the Load screen, or once ☰ has been pushed on any other
+  screen. (Share log exports the diagnostic log for bug reports.)
 - **Boss quick-sheet** shows the dungeon's total damage (`⚔ total (base+bonus)`),
   bait totals, points and wounds; an eliminated player (5 wounds) is dimmed and
   marked `☠ eliminated`. Tapping one shows that player's dungeon below.
@@ -52,20 +60,26 @@ Every in-game screen stacks these regions top-to-bottom (the **Top bar** and
 
 ---
 
-## Home Screen
+## Load Screen
 
-No game in progress.
+No game in progress — the screen the app opens on. The menu is open by default
+here (no ☰ tap needed), so all of its controls are visible at once.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────┐
-│ Dungeon Boss                              Players <2|3|4 ▾>  [ New game ]     │
-│ Choose how many players (2–4), then tap New game. You are Player 1; the rest   │
-│ are computer opponents.                                                        │
+│ Dungeon Boss                                                  [Share log]  [☰]  │
+│ UI build <id>                                                                  │
+│ [ New game ]                                                                   │
+│ Players <2|3|4>                                                                │
+│ Tap New game to begin. You are Player 1; the others are computer opponents.    │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Players** dropdown: 2, 3, or 4. **New game** starts a fresh game (Player 1 is
+- **Players** selector: 2, 3, or 4. **New game** starts a fresh game (Player 1 is
   the human; Players 2..N are computer opponents).
+- **Share log** appears in the top-right next to the ☰ toggle (see the Top-bar
+  notes above). This is the one screen where it is visible without opening the
+  menu, because the menu is already open here.
 
 ---
 
