@@ -73,7 +73,7 @@ import com.dungeonboss.model.Upgrade
 import kotlinx.coroutines.delay
 
 /** Bump this every UI change so the on-screen tag confirms which build is running. */
-const val UI_BUILD = "45 (keep ☰ on-screen; hide stats strip when menu open)"
+const val UI_BUILD = "46 (tutorial: drop step counter; message on the control line)"
 
 /** What the human has tapped in hand while building, awaiting a dungeon slot. */
 private data class Selection(val cardId: String, val isUpgrade: Boolean)

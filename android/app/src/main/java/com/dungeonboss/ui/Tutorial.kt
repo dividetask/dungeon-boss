@@ -377,30 +377,25 @@ private fun NarrationPanel(
     onBack: () -> Unit,
     onNext: () -> Unit
 ) {
-    Column(
+    Row(
         Modifier
             .fillMaxWidth()
             .background(Palette.HighlightFill)
             .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text, fontSize = 14.sp, color = Color(0xFF222222))
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // The narration replaces the old step counter — it sits on the control
+        // line and takes the remaining width.
+        Text(text, fontSize = 14.sp, color = Color(0xFF222222), modifier = Modifier.weight(1f))
+        if (index > 0) {
+            OutlinedButton(onClick = onBack) { Text("Back", fontSize = 13.sp) }
+        }
+        Button(
+            onClick = onNext,
+            colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
         ) {
-            Text("Step ${index + 1} / $total", fontSize = 11.sp, color = Palette.SubText)
-            Spacer(Modifier.weight(1f))
-            if (index > 0) {
-                OutlinedButton(onClick = onBack) { Text("Back", fontSize = 13.sp) }
-            }
-            Button(
-                onClick = onNext,
-                colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
-            ) {
-                Text(if (index < total - 1) "Continue" else "Finish", color = Color.White)
-            }
+            Text(if (index < total - 1) "Continue" else "Finish", color = Color.White)
         }
     }
 }
