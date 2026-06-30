@@ -45,8 +45,8 @@ Every in-game screen stacks these regions top-to-bottom (the **Top bar** and
 ```
 
 - **Menu (☰)** sits at the far right of the Top bar. During a game the menu is
-  collapsed; tapping ☰ reveals it (UI build, **New game**, **Players** selector).
-  On the **Load screen** (no game in progress) the menu is always open.
+  collapsed; tapping ☰ reveals it (UI build, **New game**, **Tutorial**,
+  **Players** selector). On the **Load screen** (no game) the menu is always open.
 - **Share log** sits in the Top bar's top-right corner, immediately to the left
   of the ☰ toggle. It is hidden on every screen **except** when the menu is
   revealed — i.e. on the Load screen, or once ☰ has been pushed on any other
@@ -69,7 +69,7 @@ here (no ☰ tap needed), so all of its controls are visible at once.
 ┌────────────────────────────────────────────────────────────────────────────────┐
 │ Dungeon Boss                                                  [Share log]  [☰]  │
 │ UI build <id>                                                                  │
-│ [ New game ]                                                                   │
+│ [ New game ]  [ Tutorial ]                                                     │
 │ Players <2|3|4>                                                                │
 │ Tap New game to begin. You are Player 1; the others are computer opponents.    │
 └────────────────────────────────────────────────────────────────────────────────┘
@@ -77,6 +77,8 @@ here (no ☰ tap needed), so all of its controls are visible at once.
 
 - **Players** selector: 2, 3, or 4. **New game** starts a fresh game (Player 1 is
   the human; Players 2..N are computer opponents).
+- **Tutorial** opens the [Tutorial](#tutorial) — a guided, non-interactive
+  walkthrough of the rules. It is available here and from the ☰ menu mid-game.
 - **Share log** appears in the top-right next to the ☰ toggle (see the Top-bar
   notes above). This is the one screen where it is visible without opening the
   menu, because the menu is already open here.
@@ -199,11 +201,16 @@ to each hero.
 
 ```
 │ 🏆 <Winner> wins!                                                              │
-│   Player 1: score 6 (8 pts − 1 wound)                                          │
+│   Player 1: score 11 (8 pts − 1 wound + 5 end-game bonus)                      │
 │   Player 2: eliminated (5 wounds)                                              │
 │   …                                                                            │
 │ Advance bar: "Game over — tap New game to play again."                         │
 ```
+
+- The player who **ended the game** (reached 10 points, or eliminated the last
+  rival) earns a **+5 end-game bonus**, shown on their standings line; final
+  score is `points − 2 × wounds (+ 5 for the ender)`. See
+  [phases.md](phases.md) "Match end / scoring".
 
 ---
 
@@ -218,3 +225,71 @@ to each hero.
 | Quiet round | **Continue (no heroes attacked)** |
 | Ready (turn done) | **Next turn** |
 | Game over | hint: "Game over — tap New game…" |
+
+---
+
+## Tutorial
+
+A guided, **non-interactive** walkthrough of the rules, opened from **Tutorial**
+on the [Load screen](#load-screen) or the ☰ menu. Each step shows a **frozen
+board** built from real cards (so it looks exactly like a game) with a narration
+panel pinned at the bottom. The board cannot be tapped; only the panel's controls
+advance it.
+
+```
+┌─ Dungeon Boss · Tutorial ─────────────────────────────────────────── [✕ Exit] ┐
+│ [ frozen board for this step — town / dungeon / hand / crawl, as needed ]      │
+│                                                                                │
+├────────────────────────────────────────────────────────────────────────────────┤
+│ <narration for this step>                                                      │
+│ Step <n> / <total>                                   [ Back ]   [ Continue ]   │
+└────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Continue** advances; **Back** returns to the previous step; **Finish** (on
+  the last step) and **✕ Exit** both close the tutorial and return to the screen
+  underneath — the **Load screen** when launched there, where the player can
+  start a real game or run the tutorial again.
+- Some steps animate to direct the eye: a slow **pulsing glow** on bait icons,
+  and a **spotlight that cycles** through each hero and the bait it prefers.
+
+The steps, in order (each a single narrated panel):
+
+1. **What you are** — you play the villain; a dungeon of 5 rooms + the boss
+   chamber. *(Board: a full dungeon.)*
+2. **Setup** — choose a boss from two cards, then place rooms in one of 5 slots.
+   *(Board: two boss candidates + a starting hand.)*
+3. **Bait icons** — every room and the boss show bait icons. *(Board: a full
+   dungeon + one of each hero; all bait icons pulse.)*
+4. **Preferred bait** — Barbarian→glory, Rogue→riches, Cleric→undead,
+   Mage→power. *(Board: same; the spotlight cycles each hero with its bait lit
+   in the rooms.)*
+5. **Enticement & turns** — heroes take turns from the left; a hero enters only
+   the dungeon with strictly the most of its preferred bait (a tie keeps it in
+   town); bait totals sit top-right. *(Board: same, plus the bait-totals panel,
+   cycling each hero's bait there too.)*
+6. **Crawling** — a hero crosses rooms left→right, taking each room's damage
+   until it dies or clears them. *(Board: a hero about to crawl a dungeon that
+   kills it.)*
+7. **Scoring & courage** — a death scores the owner a point; survivors grow
+   cautious. Barbarians/Clerics have courage 2 (avoid dungeons with 3+ points);
+   Rogues/Mages have courage 1 (avoid 2+). *(Board: timid lone heroes; a dungeon
+   with points.)*
+8. **Staying & recruiting** — heroes that skip (timid, or tied bait) wait in
+   town and form parties at end of round, each recruiting the leftmost unpartied
+   hero of a class it lacks. *(Board: timid lone heroes, no parties yet.)*
+9. **Parties** — a party's courage is the sum of its members; its bait is the
+   sum of every member's preference (repeats count each time). *(Board: the same
+   heroes now grouped into parties.)*
+10. **Party crawl** — the highest-HP member usually takes the next room, but some
+    rooms hit all or specific heroes. *(Board: a party mid-crawl, some dead, some
+    alive.)*
+11. **Hero abilities** — Barbarian halves damage taken; Rogue −2 from traps;
+    Cleric −4 from undead rooms; Mage −4 from arcane rooms. *(Board: a party that
+    shrugs off an undead/arcane dungeon entirely.)*
+12. **Ability cards** — cards can make a party flee, raise damage, negate a room,
+    or draw rooms; start with two, gain one each round nobody is attacked.
+    *(Board: a hand of ability cards.)*
+13. **Wounds & winning** — a surviving hero gives the owner a wound (5 = loss);
+    reaching 10 points ends the game; the ender gains **+5**; then each player
+    loses 2 per wound and the most points wins. *(Board: a dungeon with points.)*

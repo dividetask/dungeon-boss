@@ -73,7 +73,7 @@ import com.dungeonboss.model.Upgrade
 import kotlinx.coroutines.delay
 
 /** Bump this every UI change so the on-screen tag confirms which build is running. */
-const val UI_BUILD = "43 (undo an ability play in the pre-crawl window)"
+const val UI_BUILD = "44 (tutorial; Share log top-right; end-game bonus)"
 
 /** What the human has tapped in hand while building, awaiting a dungeon slot. */
 private data class Selection(val cardId: String, val isUpgrade: Boolean)
@@ -95,6 +95,8 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
     var detailCard by remember { mutableStateOf<Any?>(null) }
     // Whether the full all-players standings dialog is open.
     var showStandings by remember { mutableStateOf(false) }
+    // Whether the (non-interactive) tutorial overlay is showing.
+    var showTutorial by remember { mutableStateOf(false) }
 
     // Pre-crawl interaction state: an ability card awaiting a room target, and a
     // boostable room awaiting a hand card to discard.
@@ -165,7 +167,8 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                     statusText = game?.let { "Round ${it.round} · ${it.stage.name.lowercase()}" },
                     onNewGame = { count -> vm.newGame(count) },
                     onShareLog = { shareLog(context) },
-                    onShowStandings = { showStandings = true }
+                    onShowStandings = { showStandings = true },
+                    onStartTutorial = { showTutorial = true }
                 )
 
                 // Diagnostics: surface action failures and where the log lives.
@@ -258,6 +261,12 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                 onDismiss = { showStandings = false }
             )
         }
+        // The tutorial is a full-screen, non-interactive overlay. Finishing or
+        // exiting it returns to whatever is underneath — the Load screen when
+        // launched there, where the player can start a game or replay it.
+        if (showTutorial) {
+            TutorialScreen(onExit = { showTutorial = false })
+        }
     }
 }
 
@@ -269,7 +278,8 @@ private fun TopBar(
     statusText: String?,
     onNewGame: (Int) -> Unit,
     onShareLog: () -> Unit,
-    onShowStandings: () -> Unit
+    onShowStandings: () -> Unit,
+    onStartTutorial: () -> Unit
 ) {
     var players by remember { mutableStateOf(2) }
     var menuOpen by remember { mutableStateOf(false) }
@@ -333,7 +343,7 @@ private fun TopBar(
 
         if (showMenu) {
             Text("UI build $UI_BUILD", fontSize = 10.sp, color = Palette.SubText)
-            // New game on its own line underneath the title.
+            // New game + Tutorial on their own line underneath the title.
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button(
                     onClick = { onNewGame(players) },
@@ -341,6 +351,7 @@ private fun TopBar(
                 ) {
                     Text("New game", color = Color.White)
                 }
+                OutlinedButton(onClick = onStartTutorial) { Text("Tutorial", fontSize = 13.sp) }
             }
             // Player count selector.
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1032,10 +1043,12 @@ private fun GameOverBanner(@Suppress("UNUSED_PARAMETER") tick: Int, game: Game, 
     ) {
         Text("🏆 ${game.winner?.name} wins!", fontWeight = FontWeight.Bold, fontSize = 15.sp)
         game.standings().forEach { s ->
+            val endedHere = s.player === game.endedBy
             val line = if (s.eliminated) {
                 "${s.player.name}: eliminated (5 wounds)"
             } else {
-                "${s.player.name}: score ${s.score} (${s.player.points} pts − ${s.player.wounds} wounds)"
+                val bonus = if (endedHere) " + 5 end-game bonus" else ""
+                "${s.player.name}: score ${s.score} (${s.player.points} pts − ${s.player.wounds} wounds$bonus)"
             }
             Text(line, fontSize = 12.sp, color = Palette.SubText)
         }
