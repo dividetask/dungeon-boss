@@ -1,330 +1,382 @@
+# Room cards — flat field schema (v2).
+#
+# This replaces the old nested `effect:` block. Both clients read these fields
+# directly. Bait keys are the canonical four: glory, riches, undead, arcane.
+#
+# Required fields:
+#   name                     display name
+#   type                     trap | monster
+#   advanced                 false (basic) | true (advanced room)
+#   bait                     map of bait type => icon count
+#   lead_damage              damage to the highest-HP hero; on a kill the
+#                            leftover cascades to the next-highest hero
+#   lead_damage_increment    float; extra lead damage per room LEVEL
+#
+# Optional fields (omit = absent / 0 / null):
+#   damage_all               damage dealt to every hero
+#   damage_all_increment     float; extra all-damage per room level
+#   damage_rear              damage to the lowest-HP hero (cascades upward)
+#   damage_rear_increment    float; extra rear damage per room level
+#   damage_filter            mage|cleric|rogue|barbarian — if set, damage_all
+#                            only hits heroes of that class
+#   room_resist              null = normal, false = cannot be halved
+#                            (blocks the Barbarian), true = cannot be reduced
+#                            (blocks every hero reduction). Applies to this
+#                            room's own damage lines (not poison, which is
+#                            always unreducible).
+#   discard_lead_damage      during the crawl the owner may discard a card to
+#                            add this much to lead_damage for that crawl only
+#                            (stacks per card; no level/bait gain)
+#   discard_all_damage       same, but adds to damage_all
+#   poison_damage            damage dealt to every hero this room damaged, in a
+#                            later room (always unreducible)
+#   poison_persists          false = lands once, in the very next room; true =
+#                            lands in every later room
+#   poison_ticks             how many times poison resolves AT this room
+#                            (default 1; Maze = 3)
+#   grows_on_death           true = each hero death here raises this room's
+#                            level by 1 (so its increments scale up)
+#   draw_on_death            true = the owner draws one room card AND one
+#                            ability card per hero that dies here
+#   room_aura                { match: {...}, amount: N } — +N damage to every
+#                            OTHER room in the dungeon that matches the selector
+#                            (selector dims: type / bait / tag)
+#   tags                     classification tags (lowercased, optional)
+#
+# A room's level starts at 0. It rises by 1 when grows_on_death triggers, and
+# by 1 (basic) / 2 (advanced) when a room card is spent to upgrade it during the
+# Build phase. Each damage line = base + increment * level.
+
 rooms:
-  - id: room_gladiator
-    name: Gladiator
-    type: Basic Monster
-    damage: 4
-    bait:
-      glory: 1
-    effect:
-      grows_on_death: true
-    description: "Damage increases by 1 each time a hero dies in this room"
-    ability_text: ""
-    copies: 16
-
-  - id: succubus
-    name: Succubus
-    type: Creature
-    damage: 4
-    bait:
-      arcane: 1
-      glory: 1
-    effect:
-      grows_on_death: true
-    description: "Damage increases by 1 each time a hero dies in this room"
-    copies: 16
-
-  - id: plague_zombie
-    name: Zombies
-    type: Creature
-    damage: 4
-    bait:
-      undead: 1
-    effect:
-      grows_on_death: true
-    description: "Damage increases by 1 each time a hero dies in this room"
-    copies: 16
-
-  - id: room_poisoned_spikes
-    name: Poison Spike
-    type: Basic Trap
-    damage: 2
-    bait:
-      riches: 1
-    effect:
-      next_room_damage: 8
-    description: "Poisoned spikes are hidden under your feet; a hero hit here takes 8 more damage in the next room"
-    ability_text: ""
-    copies: 16
-
-  - id: room_stone_ball
-    name: Stone Ball
-    type: Basic Trap
-    damage: 5
-    bait:
-      glory: 1
-    description: "A giant stone ball rolls down towards you"
-    ability_text: ""
-    copies: 16
-
-  - id: room_suspicious_treasure
-    name: Treasure?
-    type: Basic Monster
-    damage: 5
-    bait:
-      riches: 1
-    description: "A mimic!"
-    ability_text: ""
-    copies: 16
-
-  - id: room_will_o_wisps
-    name: Will o Wisps
-    type: Basic Monster
-    damage: 5
-    bait:
-      arcane: 1
-    description: "Will o wisps prowl the hallway"
-    ability_text: ""
-    copies: 16
-
-  - id: room_ghoul_pit
-    name: Ghoul Pit
-    type: Basic Monster
-    damage: 5
-    bait:
-      undead: 1
-    description: "Ghouls claw their way up out of the earth"
-    ability_text: ""
-    copies: 16
-
+  # --- Mundane rooms (basic, 3 damage) ---
   - id: room_goblins
     name: Goblins
-    type: Basic Monster
-    damage: 3
-    bait:
-      glory: 1
+    type: monster
+    advanced: false
+    bait: { glory: 1 }
+    lead_damage: 3
+    lead_damage_increment: 1
     tags: [goblin]
-    description: "Goblins ambush you as you wander into the room"
-    ability_text: ""
-    copies: 24
+    copies: 4
+
+  - id: room_fireball
+    name: Fireball
+    type: trap
+    advanced: false
+    bait: { arcane: 1 }
+    lead_damage: 0
+    lead_damage_increment: 0
+    damage_all: 3
+    damage_all_increment: 1
+    copies: 4
+
+  - id: room_skeletons
+    name: Skeletons
+    type: monster
+    advanced: false
+    bait: { undead: 1 }
+    lead_damage: 3
+    lead_damage_increment: 1
+    tags: [undead]
+    copies: 4
+
+  - id: room_pit
+    name: Pit
+    type: trap
+    advanced: false
+    bait: { riches: 1 }
+    lead_damage: 0
+    lead_damage_increment: 0
+    damage_all: 3
+    damage_all_increment: 1
+    copies: 4
+
+  # --- Growth rooms (basic, 4 damage, +1 per level, grow on death) ---
+  - id: room_champion
+    name: Champion
+    type: monster
+    advanced: false
+    bait: { glory: 1 }
+    lead_damage: 4
+    lead_damage_increment: 1
+    grows_on_death: true
+    copies: 4
+
+  - id: room_succubus
+    name: Succubus
+    type: monster
+    advanced: false
+    bait: { arcane: 1 }
+    lead_damage: 4
+    lead_damage_increment: 1
+    grows_on_death: true
+    copies: 4
 
   - id: room_zombies
-    name: Skeletons
-    type: Basic Monster
-    damage: 3
-    bait:
-      undead: 1
-    description: "Skeletons"
-    ability_text: ""
-    copies: 24
+    name: Zombies
+    type: monster
+    advanced: false
+    bait: { undead: 1 }
+    lead_damage: 4
+    lead_damage_increment: 1
+    grows_on_death: true
+    tags: [undead]
+    copies: 4
 
-  - id: room_mana_storm
-    name: Mana Storm
-    type: Basic Trap
-    damage: 3
-    bait:
-      arcane: 1
-    description: "Wild magic crackles through the air"
-    ability_text: ""
-    copies: 24
+  - id: room_mimic
+    name: Mimic
+    type: monster
+    advanced: false
+    bait: { riches: 1 }
+    lead_damage: 4
+    lead_damage_increment: 1
+    grows_on_death: true
+    copies: 4
 
-  - id: room_golden_idol
-    name: Golden Idol
-    type: Basic Trap
-    damage: 3
-    bait:
-      riches: 1
-    description: "Lifting the idol triggers a hail of darts"
-    ability_text: ""
-    copies: 24
+  # --- Draw rooms (basic, two bait icons, draw one of each card on death) ---
+  - id: room_sacrifice_pit
+    name: Sacrifice Pit
+    type: trap
+    advanced: false
+    bait: { glory: 1, undead: 1 }
+    lead_damage: 4
+    lead_damage_increment: 1
+    draw_on_death: true
+    copies: 4
 
-  - id: room_soul_siphon
-    name: Soul Siphon
-    type: Basic Monster
-    damage: 4
-    bait:
-      arcane: 1
-    effect:
-      draw_on_death: ability
-    description: "Whenever a hero dies in this room, draw an ability card"
-    ability_text: ""
-    copies: 24
+  - id: room_soul_leach
+    name: Soul Leach
+    type: trap
+    advanced: false
+    bait: { arcane: 1, riches: 1 }
+    lead_damage: 0
+    lead_damage_increment: 0
+    damage_all: 2
+    damage_all_increment: 1
+    draw_on_death: true
+    copies: 4
 
-  - id: room_unhallowed_ground
-    name: Ghosts
-    type: Basic Monster
-    damage: 4
-    bait:
-      undead: 1
-    effect:
-      draw_on_death: room
-    description: "Whenever a hero dies in this room, draw a room card"
-    ability_text: ""
-    copies: 24
+  - id: room_wyvern
+    name: Wyvern
+    type: monster
+    advanced: false
+    bait: { glory: 1, riches: 1 }
+    lead_damage: 3
+    lead_damage_increment: 1
+    draw_on_death: true
+    copies: 4
 
-  - id: room_champions_arena
-    name: Champion
-    type: Basic Monster
-    damage: 4
-    bait:
-      glory: 1
-    effect:
-      unreducible: true
-    description: "A rival champion challenges you to single combat; this damage cannot be reduced"
-    ability_text: ""
-    copies: 16
+  - id: room_shade
+    name: Shade
+    type: monster
+    advanced: false
+    bait: { arcane: 1, undead: 1 }
+    lead_damage: 4
+    lead_damage_increment: 1
+    draw_on_death: true
+    tags: [undead]
+    copies: 4
 
-  - id: room_pit_trap
-    name: Pit Trap
-    type: Basic Trap
-    damage: 4
-    bait:
-      riches: 1
-    effect:
-      draw_on_death: room
-    description: "Whenever a hero dies in this room, draw a room card"
-    ability_text: ""
-    copies: 16
+  # --- Trap rooms with crawl-time discard boost (basic) ---
+  - id: room_undead_hands
+    name: Undead Hands
+    type: trap
+    advanced: false
+    bait: { undead: 1 }
+    lead_damage: 0
+    lead_damage_increment: 0
+    damage_all: 1
+    damage_all_increment: 1
+    discard_all_damage: 2
+    tags: [undead]
+    copies: 4
 
+  - id: room_power_word
+    name: Power Word
+    type: trap
+    advanced: false
+    bait: { arcane: 1 }
+    lead_damage: 0
+    lead_damage_increment: 0
+    damage_all: 1
+    damage_all_increment: 1
+    discard_all_damage: 2
+    copies: 4
 
-upgrades:
-  - id: upgrade_glory_banner
-    name: Glory Banner
-    bonus_damage: 0
-    bait:
-      glory: 1
-    description: "Adds a glory bait icon to a room"
-    copies: 15
+  # --- Poison / delayed traps (now basic) ---
+  - id: room_floor_spike
+    name: Floor Spike
+    type: trap
+    advanced: false
+    bait: { riches: 1 }
+    lead_damage: 2
+    lead_damage_increment: 1
+    poison_damage: 8
+    poison_persists: false
+    copies: 4
 
-  - id: upgrade_treasure_pile
-    name: Treasure Pile
-    bonus_damage: 0
-    bait:
-      riches: 1
-    description: "Adds a riches bait icon to a room"
-    copies: 15
-
-  - id: upgrade_cursed_idol
-    name: Cursed Idol
-    bonus_damage: 2
-    bait:
-      undead: 1
-    description: "Adds an undead bait icon and +2 damage to a room"
-    copies: 15
-
-  - id: upgrade_arcane_sigil
-    name: Arcane Sigil
-    bonus_damage: 2
-    bait:
-      arcane: 1
-    description: "Adds an arcane bait icon and +2 damage to a room"
-    copies: 15
-
-  - id: upgrade_reinforced_walls
-    name: Reinforced Walls
-    bonus_damage: 3
-    bait: {}
-    description: "Increases a room's damage by 3"
-    copies: 15
-
-# Advanced rooms share the build deck but may only be played by REPLACING an
-# existing room whose bait icons cover the advanced room's own bait. Their
-# `effect` drives special behaviour during the crawl. About as common as
-# upgrades (4 basic rooms : 1 upgrade : 1 advanced room).
+  - id: room_poison_gas
+    name: Poison Gas
+    type: trap
+    advanced: false
+    bait: { glory: 1 }
+    lead_damage: 0
+    lead_damage_increment: 0
+    damage_all: 2
+    damage_all_increment: 1
+    poison_damage: 1
+    poison_persists: true
+    copies: 4
 
 advanced_rooms:
-  - id: adv_poison_gas
-    name: Poison Gas
-    type: Trap
-    damage: 2
-    bait:
-      riches: 1
-    effect:
-      poisons_on_hit: true
-    description: "Deals 2 damage; a hero hit here takes 1 more in every later room"
-    copies: 11
-
+  # --- Anti-class traps (unreducible damage to one class) ---
   - id: adv_antimagic_room
     name: Antimagic Room
-    type: Trap
-    damage: 0
-    bait:
-      arcane: 2
-    effect:
-      party_hits:
-        - match: { preferred_bait: arcane }
-          amount: 4
-    description: "All Mages in the party take 4 damage that cannot be reduced"
-    copies: 11
+    type: trap
+    advanced: true
+    bait: { arcane: 2 }
+    lead_damage: 0
+    lead_damage_increment: 0
+    damage_all: 4
+    damage_all_increment: 1
+    damage_filter: mage
+    room_resist: true
+    copies: 2
 
   - id: adv_zealots
     name: Zealots
-    type: Creature
-    damage: 4
-    bait:
-      undead: 2
-    effect:
-      party_hits:
-        - match: { preferred_bait: undead }
-          amount: 4
-    description: "All Clerics in the party take 4 damage that cannot be reduced"
-    copies: 11
+    type: monster
+    advanced: true
+    bait: { undead: 2 }
+    lead_damage: 0
+    lead_damage_increment: 0
+    damage_all: 4
+    damage_all_increment: 1
+    damage_filter: cleric
+    room_resist: true
+    tags: [undead]
+    copies: 2
 
-  - id: adv_trap_makers_workshop
-    name: Trap Makers Workshop
-    type: Creature
-    damage: 2
-    bait:
-      riches: 2
-    effect:
-      room_auras:
-        - match: { type: trap }
-          flat: 2
-    description: "All other trap rooms deal +2 damage"
-    copies: 11
+  - id: adv_false_trigger
+    name: False Trigger
+    type: trap
+    advanced: true
+    bait: { riches: 2 }
+    lead_damage: 0
+    lead_damage_increment: 0
+    damage_all: 4
+    damage_all_increment: 1
+    damage_filter: rogue
+    room_resist: true
+    copies: 2
 
-  - id: adv_beast_tamer
-    name: Beast Tamer
-    type: Creature
-    damage: 2
-    bait:
-      glory: 2
-    effect:
-      room_auras:
-        - match: { type: creature }
-          flat: 2
-    description: "All other creature rooms deal +2 damage"
-    copies: 11
-
-  - id: adv_collapsing_tunnel
-    name: Collapsing Tunnel
-    type: Trap
-    damage: 2
-    bait:
-      riches: 1
-    effect:
-      discard_boost: { add_damage: 4 }
-    description: "Discard a room card to increase this room's damage by 4"
-    copies: 5
-
-  - id: adv_golem
-    name: Golem
-    type: Trap
-    damage: 2
-    bait:
-      arcane: 1
-    effect:
-      discard_boost: { add_damage: 4 }
-    description: "Discard a room card to increase this room's damage by 4"
-    copies: 5
-
-  - id: adv_necrotic_fog
-    name: Necrotic Fog
-    type: Trap
-    damage: 2
-    bait:
-      undead: 1
-    effect:
-      discard_boost: { add_damage: 4 }
-    description: "Discard a room card to increase this room's damage by 4"
-    copies: 5
+  # --- Unreducible / unhalvable growth bruisers ---
+  - id: adv_gladiator
+    name: Gladiator
+    type: monster
+    advanced: true
+    bait: { glory: 1 }
+    lead_damage: 4
+    lead_damage_increment: 1
+    grows_on_death: true
+    room_resist: true
+    copies: 2
 
   - id: adv_troll
     name: Troll
-    type: Trap
-    damage: 6
-    bait:
-      glory: 1
-    effect:
-      discard_boost: { unreducible: true }
-    description: "Discard a room card to make this room's damage unreducible"
-    copies: 5
+    type: monster
+    advanced: true
+    bait: { glory: 1 }
+    lead_damage: 10
+    lead_damage_increment: 4
+    grows_on_death: true
+    copies: 2
+
+  - id: adv_shadow
+    name: Shadow
+    type: monster
+    advanced: true
+    bait: { undead: 1 }
+    lead_damage: 4
+    lead_damage_increment: 1
+    grows_on_death: true
+    room_resist: false
+    tags: [undead]
+    copies: 2
+
+  - id: adv_wright
+    name: Wright
+    type: monster
+    advanced: true
+    bait: { undead: 1 }
+    lead_damage: 4
+    lead_damage_increment: 1
+    grows_on_death: true
+    room_resist: false
+    tags: [undead]
+    copies: 2
+
+  # --- Cursed Ring: unreducible + persisting poison, grows per level ---
+  - id: adv_cursed_ring
+    name: Cursed Ring
+    type: trap
+    advanced: true
+    bait: { riches: 1 }
+    lead_damage: 2
+    lead_damage_increment: 1
+    room_resist: true
+    poison_damage: 2
+    poison_persists: true
+    copies: 2
+
+  # --- Black Tentacles: chip everyone, smash the most injured ---
+  - id: adv_black_tentacles
+    name: Black Tentacles
+    type: trap
+    advanced: true
+    bait: { arcane: 1 }
+    lead_damage: 0
+    lead_damage_increment: 0
+    damage_all: 1
+    damage_all_increment: 1
+    damage_rear: 5
+    damage_rear_increment: 1
+    copies: 2
+
+  # --- Maze: poison resolves 3x here (helps when a poison trap precedes it) ---
+  - id: adv_maze
+    name: Maze
+    type: trap
+    advanced: true
+    bait: { arcane: 1 }
+    lead_damage: 0
+    lead_damage_increment: 0
+    damage_all: 4
+    damage_all_increment: 1
+    poison_ticks: 3
+    copies: 2
+
+  # --- Aura rooms (re-added): buff other traps / creatures ---
+  - id: adv_trap_makers_workshop
+    name: Trap Makers Workshop
+    type: trap
+    advanced: true
+    bait: { riches: 1 }
+    lead_damage: 2
+    lead_damage_increment: 1
+    room_aura:
+      match: { type: trap }
+      amount: 2
+    copies: 2
+
+  - id: adv_beast_tamer
+    name: Beast Tamer
+    type: monster
+    advanced: true
+    bait: { glory: 1 }
+    lead_damage: 2
+    lead_damage_increment: 1
+    room_aura:
+      match: { type: creature }
+      amount: 2
+    copies: 2
