@@ -297,7 +297,7 @@ advanced_rooms:
     type: monster
     advanced: true
     bait: { undead: 1 }
-    lead_damage: 4
+    lead_damage: 6
     lead_damage_increment: 1
     grows_on_death: true
     room_resist: false
@@ -309,7 +309,7 @@ advanced_rooms:
     type: monster
     advanced: true
     bait: { undead: 1 }
-    lead_damage: 4
+    lead_damage: 6
     lead_damage_increment: 1
     grows_on_death: true
     room_resist: false
