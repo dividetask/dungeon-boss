@@ -122,6 +122,7 @@ hero added) by editing data alone.
 | `icon`           | string        | Display icon (emoji or asset key)                            |
 | `preferred_bait` | bait          | One of the four bait types — the hero's lure ("Bait")        |
 | `starting_hp`    | integer > 0   | Health at level 0                                            |
+| `starting_courage` | integer ≥ 1 | Courage at level 0 (per-class base; default 1)             |
 | `hp_level_increment` | float     | HP gained per level (floored — see formula); may be < 1      |
 | `self_damage_multiplier` | float | Multiplies the damage **this hero** personally takes (self-scope) |
 | `party_damage_reduction` | integer ≥ 0 | Flat party-wide damage reduction at level 0 (the aura)   |
@@ -140,19 +141,16 @@ gains **+1 every time it survives a crawl**, and persists until the hero dies
 
 ```
 max_hp           = starting_hp + floor(level * hp_level_increment)
-courage          = 1 + level                          # uniform base 1, +1 per level (interpretation)
+courage          = starting_courage + level           # per-class base, +1 per level
 party_reduction  = party_damage_reduction + floor(level * party_damage_reduction_level_increment)
 ```
 
 Because `hp_level_increment` is a float that is **floored after multiplying by
 level**, classes with a small increment (e.g. the Mage's `0.05`) gain HP only
 occasionally, while a Barbarian (`2`) gains HP every level. HP itself is always
-an **integer**; only the increments are floats. Heroes are restored to their
-current (levelled) **full HP between crawls**.
-
-> **(interpretation)** The new hero schema does not carry an explicit courage
-> value, so courage uses a uniform base of `1` plus the hero's level. If a
-> per-class base is wanted later, add a `base_courage` field.
+an **integer**; only the increments are floats. **Courage** starts at the
+per-class `starting_courage` and rises by **1 every level**. Heroes are restored
+to their current (levelled) **full HP between crawls**.
 
 #### How the damage fields combine
 
@@ -180,12 +178,12 @@ target's own self-multiplier last**; damage never goes below 0.
 
 The current four heroes expressed this way:
 
-| Hero | bait | start HP | hp/lvl | self× | party− | −/lvl | bait filter | type filter |
-|------|------|----------|--------|-------|--------|-------|-------------|-------------|
-| Barbarian | glory | 8 | 2 | 0.5 | 0 | 0 | — | — |
-| Rogue | riches | 6 | 1 | 1 | 2 | 1 | — | trap |
-| Cleric | undead | 5 | 0.75 | 1 | 4 | 1 | undead | — |
-| Mage | arcane | 4 | 0.05 | 1 | 4 | 2 | arcane | — |
+| Hero | bait | start HP | courage | hp/lvl | self× | party− | −/lvl | bait filter | type filter |
+|------|------|----------|---------|--------|-------|--------|-------|-------------|-------------|
+| Barbarian | glory | 8 | 2 | 2 | 0.5 | 0 | 0 | — | — |
+| Rogue | riches | 6 | 1 | 1 | 1 | 2 | 1 | — | trap |
+| Cleric | undead | 5 | 2 | 0.75 | 1 | 4 | 1 | undead | — |
+| Mage | arcane | 4 | 1 | 0.05 | 1 | 4 | 2 | arcane | — |
 
 ### Upgrade card
 

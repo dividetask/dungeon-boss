@@ -93,7 +93,7 @@ class Upgrade(
  * is set to floor(round / 4) when the hero arrives, gains +1 each time the hero
  * survives a crawl, and persists until the hero dies. Three stats derive from it:
  *   maxHp           = startingHp + floor(level * hpLevelIncrement)
- *   courage         = 1 + level                      (uniform base 1)
+ *   courage         = startingCourage + level        (per-class base; +1 per level)
  *   partyReduction  = partyDamageReduction + floor(level * partyDamageReductionLevelIncrement)
  * See docs/cards.md (Levelling and derived stats).
  */
@@ -102,6 +102,7 @@ class Hero(
     override val name: String,
     val preferredBait: Bait,
     val startingHp: Int,
+    val startingCourage: Int = 1,
     val hpLevelIncrement: Double = 0.0,
     val selfDamageMultiplier: Double = 1.0,
     val partyDamageReduction: Int = 0,
@@ -120,8 +121,8 @@ class Hero(
     /** Full (levelled) health: starting HP plus floored per-level growth. */
     val maxHp: Int get() = startingHp + kotlin.math.floor(level * hpLevelIncrement).toInt()
 
-    /** Combined into a party's courage; rises by 1 per level (uniform base 1). */
-    val courage: Int get() = 1 + level
+    /** Combined into a party's courage; a per-class base that rises by 1 per level. */
+    val courage: Int get() = startingCourage + level
 
     /** The levelled flat party-wide damage reduction this hero contributes. */
     val partyReduction: Int

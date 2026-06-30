@@ -42,14 +42,14 @@ Room:    id, name, type, damage, bait, description, effect:map, tags, advanced?
          trap?     ↦ type contains "trap"
          creature? ↦ type contains "monster" or "creature"
 Upgrade: id, name, bonus_damage, bait, description, tags;  type = "Upgrade"
-Hero:    id, name, icon, preferred_bait, starting_hp, hp_level_increment,
-         self_damage_multiplier, party_damage_reduction,
+Hero:    id, name, icon, preferred_bait, starting_hp, starting_courage,
+         hp_level_increment, self_damage_multiplier, party_damage_reduction,
          party_damage_reduction_level_increment,
          damage_bait_filter (bait|nil), damage_room_type_filter (type|nil), tags
          level = 0     # the ONE mutable field: set at arrival, +1 on crawl survival,
                        # persists until the hero dies (heroes are distinct instances)
          max_hp          ↦ starting_hp + floor(level * hp_level_increment)
-         courage         ↦ 1 + level                 # uniform base 1 (interpretation)
+         courage         ↦ starting_courage + level   # per-class base, +1 per level
          party_reduction ↦ party_damage_reduction
                            + floor(level * party_damage_reduction_level_increment)
 AbilityCard: id, name, text, effect:map, tags

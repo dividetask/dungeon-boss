@@ -99,6 +99,7 @@ class CardLibrary(
             name = c.req("name"),
             preferredBait = Bait.normalize(c.req("preferred_bait")),
             startingHp = (c["starting_hp"] as Number).toInt(),
+            startingCourage = (c["starting_courage"] as? Number)?.toInt() ?: 1,
             hpLevelIncrement = (c["hp_level_increment"] as? Number)?.toDouble() ?: 0.0,
             selfDamageMultiplier = (c["self_damage_multiplier"] as? Number)?.toDouble() ?: 1.0,
             partyDamageReduction = (c["party_damage_reduction"] as? Number)?.toInt() ?: 0,

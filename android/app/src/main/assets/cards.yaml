@@ -435,13 +435,14 @@ advanced_rooms:
 # ===== heroes (from data/cards/heroes.yaml) =====
 # Data-driven heroes (see docs/cards.md). Level starts at floor(round/4), +1 per
 # survived crawl. maxHP = starting_hp + floor(level*hp_level_increment);
-# courage = 1 + level; party reduce = party_damage_reduction + floor(level*increment).
+# courage = starting_courage + level; party reduce = party_damage_reduction + floor(level*increment).
 heroes:
   - id: hero_barbarian
     name: Barbarian
     icon: "🪓"
     preferred_bait: glory
     starting_hp: 8
+    starting_courage: 2
     hp_level_increment: 2
     self_damage_multiplier: 0.5
     party_damage_reduction: 0
@@ -455,6 +456,7 @@ heroes:
     icon: "🗡️"
     preferred_bait: riches
     starting_hp: 6
+    starting_courage: 1
     hp_level_increment: 1
     self_damage_multiplier: 1
     party_damage_reduction: 2
@@ -468,6 +470,7 @@ heroes:
     icon: "✝️"
     preferred_bait: undead
     starting_hp: 5
+    starting_courage: 2
     hp_level_increment: 0.75
     self_damage_multiplier: 1
     party_damage_reduction: 4
@@ -481,6 +484,7 @@ heroes:
     icon: "🔮"
     preferred_bait: arcane
     starting_hp: 4
+    starting_courage: 1
     hp_level_increment: 0.05
     self_damage_multiplier: 1
     party_damage_reduction: 4
