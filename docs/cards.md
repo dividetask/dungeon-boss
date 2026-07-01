@@ -110,7 +110,8 @@ creatures), **Vampire**
 ignores all hero/party reductions), **Goblin Chieftain** (+1/point to `goblin`-
 and `hobgoblin`-tagged rooms), **Malevolent Spirit** (`self_damage_per_point:
 3`), **Kobold Chieftain** (+2 flat to trap rooms), and **Necromancer** (+2 flat
-to undead creatures, i.e. `type: creature` + `tag: undead`). Lich, Necromancer
+**plus +1/point** to undead creatures, i.e. `type: creature` + `tag: undead`).
+Lich, Necromancer
 and Oni match on a **tag** (not a bait query) so upgrading an unrelated room to
 carry the bait cannot pull it into their aura.
 
