@@ -135,4 +135,20 @@ class EngineTest {
         p.wounds = 5
         assertTrue(Scoreboard.eliminated(p))
     }
+
+    @Test
+    fun enderGainsEndGameBonus() {
+        val ender = Player("Ender")
+        ender.points = 10 // reached the win threshold
+        val other = Player("Other")
+        other.points = 12; other.wounds = 1 // 12 - 2 = 10 raw
+
+        // No bonus without an ender; the ender's +5 applies only to them.
+        assertEquals(10, Scoreboard.score(ender))
+        assertEquals(15, Scoreboard.score(ender, ender)) // 10 + 5
+        assertEquals(10, Scoreboard.score(other, ender)) // unchanged
+
+        // Other has the higher raw score, but the bonus carries the ender to the win.
+        assertEquals(ender, Scoreboard.winner(listOf(ender, other), ender))
+    }
 }
