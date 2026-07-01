@@ -1336,57 +1336,48 @@ private fun encounterName(encounter: Encounter): String = when (encounter) {
     else -> "?"
 }
 
-/** Format a per-level increment (drop the trailing ".0" for whole numbers). */
-private fun fmtInc(v: Double): String = if (v == v.toLong().toDouble()) v.toLong().toString() else v.toString()
-
 /**
- * A full, human-readable description of what a room does, built from its fields
- * (so it stays accurate as values/levels change). Shown in the card detail popup.
+ * A concise description of what a room does, built from its fields. Assumes the
+ * player knows the rules: no leveling notes, no explanation of how damage works.
+ * Shown in the card detail popup.
  */
 private fun describeRoom(e: Encounter): String {
-    fun per(v: Double) = if (v > 0) " (+${fmtInc(v)} per level)" else ""
     val parts = mutableListOf<String>()
 
-    if (e.leadDamage > 0) {
-        parts.add("Deals ${e.leadDamage} damage to the hero with the most health${per(e.leadIncrement)}; " +
-            "if it kills, the extra damage carries to the next hero.")
-    }
+    if (e.leadDamage > 0) parts.add("Deals ${e.leadDamage} damage.")
     if (e.damageAll > 0) {
-        val who = e.damageFilter?.let { "every ${it.replaceFirstChar { c -> c.uppercase() }}" } ?: "every hero"
-        parts.add("Deals ${e.damageAll} damage to $who${per(e.allIncrement)}.")
+        val who = e.damageFilter?.let { " to all ${it.lowercase()}s" } ?: " to all"
+        parts.add("Deals ${e.damageAll} damage$who.")
     }
-    if (e.damageRear > 0) {
-        parts.add("Deals ${e.damageRear} damage to the most injured hero${per(e.rearIncrement)}.")
-    }
+    if (e.damageRear > 0) parts.add("Deals ${e.damageRear} damage to weakest first.")
     when (e.roomResist) {
-        true -> parts.add("This damage cannot be reduced.")
-        false -> parts.add("This damage cannot be halved.")
+        true -> parts.add("Cannot be reduced.")
+        false -> parts.add("Cannot be halved.")
         else -> {}
     }
     if (e.poisonDamage > 0) {
         parts.add(
-            if (e.poisonPersists) "A hero it damages then loses ${e.poisonDamage} more health in every later room."
-            else "A hero it damages takes ${e.poisonDamage} more damage in the next room."
+            if (e.poisonPersists) "Poisons: ${e.poisonDamage} damage each later room."
+            else "Then ${e.poisonDamage} damage next room."
         )
     }
-    if (e.poisonTicks > 1) parts.add("Any poison resolves ${e.poisonTicks}× here.")
-    if (e.growsOnDeath) parts.add("Grows stronger (gains a level) each time a hero dies here.")
-    if (e.drawOnDeath) parts.add("Whenever a hero dies here, draw one room card and one ability card.")
+    if (e.poisonTicks > 1) parts.add("Poison triggers ${e.poisonTicks}× here.")
+    if (e.growsOnDeath) parts.add("Grows on death.")
+    if (e.drawOnDeath) parts.add("Draw a room and ability card per death.")
     if (e.discardLeadDamage > 0 || e.discardAllDamage > 0) {
         val amt = if (e.discardAllDamage > 0) e.discardAllDamage else e.discardLeadDamage
-        parts.add("During the crawl, discard a card to add $amt damage this crawl (stacks).")
+        parts.add("Discard a card to add $amt damage.")
     }
     e.roomAura?.let { aura ->
         val amount = (aura["amount"] as? Number)?.toInt() ?: 0
         @Suppress("UNCHECKED_CAST")
         val matchType = ((aura["match"] as? Map<String, Any?>)?.get("type"))?.toString()?.lowercase()
         val kind = when {
-            matchType?.contains("trap") == true -> "trap"
-            matchType?.contains("creature") == true || matchType?.contains("monster") == true -> "creature"
-            else -> "other"
+            matchType?.contains("trap") == true -> "traps"
+            matchType?.contains("creature") == true || matchType?.contains("monster") == true -> "creatures"
+            else -> "rooms"
         }
-        if (amount > 0) parts.add("Every other $kind room in the dungeon deals +$amount damage.")
+        if (amount > 0) parts.add("Other $kind deal +$amount damage.")
     }
-    if (parts.isEmpty()) parts.add("Deals no damage on its own.")
     return parts.joinToString(" ")
 }
