@@ -316,7 +316,7 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
         val g = newGame()
         g.players[0].dungeon = showcase()
         g.players[0].points = points
-        g.players[1].dungeon = dungeon("boss_medusa", listOf("room_goblins")) // glory only
+        g.players[1].dungeon = dungeon("boss_medusa", listOf("room_goblins")) // low bait, strictly weaker
         return g
     }
 

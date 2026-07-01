@@ -69,6 +69,8 @@ definition. The shape:
 effect:
   self_damage_per_point: 3      # the boss's OWN bonus damage per owner point
                                 #   (optional; default 1 — every boss has this)
+  unreducible: true             # the boss's final gaze ignores all hero/party
+                                #   reductions (optional; Medusa)
   room_bonuses:                 # extra damage granted to matching rooms
     - match: { tag: goblin }    #   a room matches when it satisfies EVERY
       per_point: 1              #   dimension given under `match`
@@ -78,6 +80,9 @@ effect:
 
 - **`self_damage_per_point`** — the boss's final-encounter damage rises by this
   much per point its owner has scored. Every boss has it; **default 1**.
+- **`unreducible`** — when `true`, the boss's own final-encounter damage cannot
+  be reduced by any hero self-multiplier or party aura (the same flag rooms use).
+  Optional; absent means the attack reduces normally.
 - **`room_bonuses`** — a list of auras. Each grants `flat` damage and/or
   `per_point × points` damage to every room in the dungeon that matches.
 - **`match`** dimensions (a room must satisfy all that are present):
@@ -86,7 +91,8 @@ effect:
     (its type names a monster/creature).
   - `bait` — the room has at least one icon of this bait type.
 
-The eight bosses: **Lich**, **Oni**, **Vampire**, **Medusa** (no effect),
+The eight bosses: **Lich**, **Oni**, **Vampire**, **Medusa** (`unreducible: true`
+— her final gaze ignores all hero/party reductions),
 **Goblin Chieftain** (+1/point to `goblin`-tagged rooms), **Malevolent Spirit**
 (`self_damage_per_point: 3`), **Kobold Chieftain** (+2 flat to trap rooms), and
 **Necromancer** (+2 flat to undead creatures, i.e. `type: creature` + `bait:
