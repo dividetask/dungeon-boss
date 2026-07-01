@@ -90,8 +90,10 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
     val viewed = remember { mutableStateOf(humanName) }
     val decision = game?.currentDecision()
     var selection by remember(decision) { mutableStateOf<Selection?>(null) }
-    // Room ids the human has tapped to discard this Discard phase (0–2).
-    var discardSelection by remember(decision) { mutableStateOf<Set<String>>(emptySet()) }
+    // Room ids the human has tapped to discard this Discard phase, as a multiset
+    // (an id repeats once per copy marked), so multiple copies of a card can be
+    // discarded. Total size is capped at DiscardPhase.MAX_DISCARDS.
+    var discardSelection by remember(decision) { mutableStateOf<List<String>>(emptyList()) }
 
     // A card whose full details are being shown in a popup (ℹ button), or null.
     var detailCard by remember { mutableStateOf<Any?>(null) }
@@ -201,11 +203,16 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         onDecide = { choice, target -> vm.decide(choice, target) },
                         discardSelection = discardSelection,
                         onToggleDiscard = { id ->
-                            discardSelection = when {
-                                discardSelection.contains(id) -> discardSelection - id
-                                discardSelection.size < DiscardPhase.MAX_DISCARDS -> discardSelection + id
-                                else -> discardSelection // already at the 2-card limit
-                            }
+                            // Tapping a card cycles how many copies of it are marked to
+                            // discard: 0 → 1 → 2 … up to the copies held (and the shared
+                            // MAX_DISCARDS budget), then back to 0 ("discard none").
+                            val hand = game?.players?.firstOrNull { it.name == humanName }?.roomHand ?: emptyList()
+                            val copiesInHand = hand.count { it.id == id }
+                            val currentForId = discardSelection.count { it == id }
+                            val otherSelected = discardSelection.size - currentForId
+                            val cap = minOf(copiesInHand, DiscardPhase.MAX_DISCARDS - otherSelected)
+                            val next = if (currentForId >= cap) 0 else currentForId + 1
+                            discardSelection = discardSelection.filter { it != id } + List(next) { id }
                         },
                         pendingAbility = pendingAbility,
                         onPickAbility = { card ->
@@ -379,7 +386,7 @@ private fun GameBody(
     selection: Selection?,
     onSelect: (Selection) -> Unit,
     onDecide: (String?, Any?) -> Unit,
-    discardSelection: Set<String>,
+    discardSelection: List<String>,
     onToggleDiscard: (String) -> Unit,
     pendingAbility: AbilityCard?,
     onPickAbility: (AbilityCard) -> Unit,
@@ -443,11 +450,26 @@ private fun GameBody(
                                 selectableForBuild -> Modifier.clickable { onSelect(Selection(card.id)) }
                                 else -> Modifier
                             }
-                            val highlighted = selection?.cardId == card.id ||
-                                (choosingDiscard && discardSelection.contains(card.id))
+                            val discardCount = if (choosingDiscard) discardSelection.count { it == card.id } else 0
+                            val highlighted = selection?.cardId == card.id || discardCount > 0
                             WithCount(group.size) {
-                                HandCardView(card, modifier, highlighted = highlighted,
-                                    onInfo = { onShowDetail(card) })
+                                Box {
+                                    HandCardView(card, modifier, highlighted = highlighted,
+                                        onInfo = { onShowDetail(card) })
+                                    if (discardCount > 0) {
+                                        Box(
+                                            Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .padding(3.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Palette.Damage)
+                                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                                        ) {
+                                            Text("🗑×$discardCount", color = Color.White,
+                                                fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
                             }
                         }
                         human.abilityHand.groupBy { it.id }.values.forEach { group ->
@@ -1105,7 +1127,7 @@ private fun AdvanceBar(
     onCancelAbility: () -> Unit,
     pendingAbility: AbilityCard?,
     pendingBoostRoom: Int?,
-    discardSelection: Set<String> = emptySet()
+    discardSelection: List<String> = emptyList()
 ) {
     val decision = game.currentDecision()
     val human = game.players.first { it.name == humanName }
@@ -1217,10 +1239,9 @@ private fun CardDetailDialog(card: Any, onDismiss: () -> Unit) {
                     is PlacedRoom -> {
                         DetailHeader(CardArt.roomArt(card.type), card.name,
                             if (card.baseRoom.advanced) "Advanced · ${card.type}" else card.type)
-                        DetailStat("Damage", damageSummary(card))
                         if (card.level > 0) DetailStat("Level", card.level.toString())
                         DetailBait(card.bait)
-                        DetailBody(card.description)
+                        DetailBody(describeRoom(card))
                     }
                     is Boss -> {
                         DetailHeader(CardArt.bossArt(card.id), card.name, "Boss")
@@ -1231,9 +1252,8 @@ private fun CardDetailDialog(card: Any, onDismiss: () -> Unit) {
                     is Room -> {
                         DetailHeader(CardArt.roomArt(card.type), card.name,
                             if (card.advanced) "Advanced · ${card.type}" else card.type)
-                        DetailStat("Damage", damageSummary(card))
                         DetailBait(card.bait)
-                        DetailBody(card.description)
+                        DetailBody(describeRoom(card))
                     }
                     is AbilityCard -> {
                         DetailHeader("✨", card.name, "Ability")
@@ -1316,20 +1336,57 @@ private fun encounterName(encounter: Encounter): String = when (encounter) {
     else -> "?"
 }
 
-/** A short human-readable damage line for the detail dialog (lead / all / rear + resist / poison). */
-private fun damageSummary(e: Encounter): String {
-    val channels = mutableListOf<String>()
-    if (e.leadDamage > 0) channels.add("Lead ${e.leadDamage}")
-    if (e.damageAll > 0) channels.add("All ${e.damageAll}" + (e.damageFilter?.let { " ($it)" } ?: ""))
-    if (e.damageRear > 0) channels.add("Rear ${e.damageRear}")
-    if (channels.isEmpty()) channels.add(e.displayDamage.toString())
+/** Format a per-level increment (drop the trailing ".0" for whole numbers). */
+private fun fmtInc(v: Double): String = if (v == v.toLong().toDouble()) v.toLong().toString() else v.toString()
 
-    val extra = mutableListOf<String>()
-    if (e.poisonDamage > 0) extra.add("poison ${e.poisonDamage}" + if (e.poisonPersists) "/room" else " next room")
+/**
+ * A full, human-readable description of what a room does, built from its fields
+ * (so it stays accurate as values/levels change). Shown in the card detail popup.
+ */
+private fun describeRoom(e: Encounter): String {
+    fun per(v: Double) = if (v > 0) " (+${fmtInc(v)} per level)" else ""
+    val parts = mutableListOf<String>()
+
+    if (e.leadDamage > 0) {
+        parts.add("Deals ${e.leadDamage} damage to the hero with the most health${per(e.leadIncrement)}; " +
+            "if it kills, the extra damage carries to the next hero.")
+    }
+    if (e.damageAll > 0) {
+        val who = e.damageFilter?.let { "every ${it.replaceFirstChar { c -> c.uppercase() }}" } ?: "every hero"
+        parts.add("Deals ${e.damageAll} damage to $who${per(e.allIncrement)}.")
+    }
+    if (e.damageRear > 0) {
+        parts.add("Deals ${e.damageRear} damage to the most injured hero${per(e.rearIncrement)}.")
+    }
     when (e.roomResist) {
-        true -> extra.add("can't be reduced")
-        false -> extra.add("can't be halved")
+        true -> parts.add("This damage cannot be reduced.")
+        false -> parts.add("This damage cannot be halved.")
         else -> {}
     }
-    return channels.joinToString(" / ") + if (extra.isNotEmpty()) " · ${extra.joinToString(", ")}" else ""
+    if (e.poisonDamage > 0) {
+        parts.add(
+            if (e.poisonPersists) "A hero it damages then loses ${e.poisonDamage} more health in every later room."
+            else "A hero it damages takes ${e.poisonDamage} more damage in the next room."
+        )
+    }
+    if (e.poisonTicks > 1) parts.add("Any poison resolves ${e.poisonTicks}× here.")
+    if (e.growsOnDeath) parts.add("Grows stronger (gains a level) each time a hero dies here.")
+    if (e.drawOnDeath) parts.add("Whenever a hero dies here, draw one room card and one ability card.")
+    if (e.discardLeadDamage > 0 || e.discardAllDamage > 0) {
+        val amt = if (e.discardAllDamage > 0) e.discardAllDamage else e.discardLeadDamage
+        parts.add("During the crawl, discard a card to add $amt damage this crawl (stacks).")
+    }
+    e.roomAura?.let { aura ->
+        val amount = (aura["amount"] as? Number)?.toInt() ?: 0
+        @Suppress("UNCHECKED_CAST")
+        val matchType = ((aura["match"] as? Map<String, Any?>)?.get("type"))?.toString()?.lowercase()
+        val kind = when {
+            matchType?.contains("trap") == true -> "trap"
+            matchType?.contains("creature") == true || matchType?.contains("monster") == true -> "creature"
+            else -> "other"
+        }
+        if (amount > 0) parts.add("Every other $kind room in the dungeon deals +$amount damage.")
+    }
+    if (parts.isEmpty()) parts.add("Deals no damage on its own.")
+    return parts.joinToString(" ")
 }
