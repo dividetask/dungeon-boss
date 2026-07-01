@@ -56,6 +56,9 @@ class Game(
         private set
     var winner: Player? = null
         private set
+    // The player whose crawl ended the game; they earn the end-game bonus.
+    var endedBy: Player? = null
+        private set
     var stage: Stage = Stage.UNSTARTED
         private set
 
@@ -149,7 +152,8 @@ class Game(
         currentCrawl = null
 
         if (Scoreboard.over(players)) {
-            winner = Scoreboard.winner(players, player) // the crawl's owner ended the game
+            endedBy = player // the crawl's owner ended the game (gains the bonus)
+            winner = Scoreboard.winner(players, player)
             crawlQueue.clear()
             stage = Stage.OVER
         } else {
@@ -235,8 +239,8 @@ class Game(
     /** The game is decided; no more turns. */
     fun over(): Boolean = stage == Stage.OVER
 
-    /** Final standings (best first) for display. */
-    fun standings(): List<Scoreboard.Standing> = Scoreboard.standings(players)
+    /** Final standings (best first) for display; the ender's bonus is included. */
+    fun standings(): List<Scoreboard.Standing> = Scoreboard.standings(players, endedBy)
 
     /** True while a party is in the pre-crawl window this turn. */
     fun crawling(): Boolean = stage == Stage.CRAWLING

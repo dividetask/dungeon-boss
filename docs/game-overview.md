@@ -46,8 +46,9 @@ Each card type is fully specified in [cards.md](cards.md). In brief:
 
 Points and wounds are tracked per player. A player with **5 wounds** is
 eliminated. The game ends when someone reaches **10 points** or all but one
-player is eliminated; the winner is the surviving player with the highest
-**points − 2 × wounds** (ties go to whoever ended the game). See
+player is eliminated; the player who **ends the game gains a 5-point bonus**.
+The winner is the surviving player with the highest **points − 2 × wounds
+(+ 5 for the ender)** (ties go to whoever ended the game). See
 [phases.md](phases.md#resolved-rules).
 
 ## Players and heroes
