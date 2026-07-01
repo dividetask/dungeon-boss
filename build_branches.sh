@@ -94,6 +94,15 @@ while IFS= read -r r; do BRANCHES+=("${r#"$REMOTE"/}"); done \
 echo "found branches: ${BRANCHES[*]:-(none)}"
 
 for branch in ${BRANCHES[@]+"${BRANCHES[@]}"}; do
+  # Safety guard: only ever build claude/ branches. Branch discovery already
+  # restricts to $GLOB (default claude/*), but GLOB is an overridable env var —
+  # this hard prefix check guarantees main (or any non-claude/ branch) is never
+  # checked out, built, committed to, or pushed, no matter what GLOB is set to.
+  case "$branch" in
+    claude/*) ;;
+    *) echo "skip $branch (not a claude/ branch)"; continue ;;
+  esac
+
   sha="$(git rev-parse --verify --quiet "$REMOTE/$branch")" || continue
   last="$(grep "^$branch " "$STATE" 2>/dev/null | awk '{print $2}' | tail -1)"
   [ "$sha" = "$last" ] && { echo "skip $branch (no changes)"; continue; }
