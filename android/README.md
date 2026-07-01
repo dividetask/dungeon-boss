@@ -27,7 +27,8 @@ android/
         │       ├── game/       # Deck, Dungeon, Player, Party, PartyNamer,
         │       │               #   Scoreboard, Decision, Game, BaitCounter,
         │       │               #   DungeonSummary, HeroAbility, CrawlResolver,
-        │       │               #   PartyCrawlResolver, RandomAgent
+        │       │               #   PartyCrawlResolver, Agent, RandomAgent,
+        │       │               #   LogicAgent, DungeonForecast
         │       ├── game/phases/# Setup, Arrival, Build, Bait, Crawl, Recruitment
         │       └── ui/         # Compose screen (analogue of the web view +
         │                       #   CardPresenter): Theme, CardViews, GameScreen,
@@ -49,8 +50,11 @@ The engine is a direct port of `../webapp/lib/`, preserving the same rules:
   (matching the Ruby objects). This is covered by a unit test.
 - **Phases** are classes that orchestrate one step each; Arrival/Bait/Crawl run
   automatically, Setup/Build wait on a `Decision`.
-- **Player 1 is you; Player 2 is a `RandomAgent`** resolved behind the scenes,
-  exactly as in the web app.
+- **Player 1 is you; Players 2…N are `LogicAgent`s** resolved behind the scenes,
+  exactly as in the web app. `LogicAgent` reads its strategy from
+  `assets/ai_logic.yaml` and scores each `Decision` with a tie-break chain of
+  comparators (static + `DungeonForecast` simulations); a simpler `RandomAgent`
+  remains as a baseline. See [../docs/ai.md](../docs/ai.md).
 - Resolution uses damage, health, bait icons, preferred bait, **hero abilities**
   (Barbarian/Cleric/Mage/Rogue) and **courage / parties / recruitment**. Ability
   cards and boss/room ability text are ignored in v1, as per the docs.

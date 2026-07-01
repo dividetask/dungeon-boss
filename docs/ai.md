@@ -1,11 +1,13 @@
 # Computer Opponent (AI)
 
-The web app's opponents are played by **`LogicAgent`**, an automated player whose
+Both clients' opponents are played by **`LogicAgent`**, an automated player whose
 strategy lives in **data** rather than code: the file
-[`data/ai_logic.yaml`](../data/ai_logic.yaml). The agent is the interpreter; the
-YAML is the logic. This mirrors how card `effect`s are declarative data
-interpreted by `BossEffect` / `RoomEffect` / `AbilityEffect` — the AI follows the
-same split, so its behaviour can be tuned without touching Ruby.
+[`data/ai_logic.yaml`](../data/ai_logic.yaml) (the Android app carries its own
+copy under `android/app/src/main/assets/ai_logic.yaml`, kept in sync). The agent
+is the interpreter; the YAML is the logic. This mirrors how card `effect`s are
+declarative data interpreted by `BossEffect` / `RoomEffect` / `AbilityEffect` —
+the AI follows the same split, so its behaviour can be tuned without touching
+code.
 
 > An older, strategy-free opponent (`RandomAgent`) still exists as a baseline and
 > for tests; it picks a legal option at random.
@@ -83,7 +85,12 @@ placement scores at least as well as leaving the dungeon as-is.
 
 ## Where it is wired
 
-`POST /new` (in `webapp/app.rb`) loads `data/ai_logic.yaml` once per opponent and
-hands the agents to `Game`, which calls `LogicAgent#attach(self)` so the agent can
-read the town for its simulations. Player 1 is the human; Players 2…N are
-`LogicAgent`s.
+Player 1 is the human; Players 2…N are `LogicAgent`s. In both clients the `Game`
+calls `attach` on each agent (via a small `Agent` abstraction) so it can read the
+town for its simulations.
+
+- **Web app:** `POST /new` (in `webapp/app.rb`) loads `data/ai_logic.yaml` once
+  per opponent and hands the agents to `Game`.
+- **Android:** `GameViewModel.newGame` loads the `ai_logic.yaml` asset per
+  opponent (`LogicAgent.load`) and passes them to `Game`. `DungeonForecast` uses
+  the resolver's `dryRun` flag so a forecast never grows a grow-on-death room.
