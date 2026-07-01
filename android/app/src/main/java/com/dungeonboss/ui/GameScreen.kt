@@ -73,7 +73,7 @@ import com.dungeonboss.model.Room
 import kotlinx.coroutines.delay
 
 /** Bump this every UI change so the on-screen tag confirms which build is running. */
-const val UI_BUILD = "48 (tutorial: Arrival is Phase 1; boss is setup)"
+const val UI_BUILD = "49 (tutorial: Draw phase wraps discard; boss info hint)"
 
 /** What the human has tapped in hand while building, awaiting a dungeon slot. */
 internal data class Selection(val cardId: String)
@@ -1303,7 +1303,7 @@ private fun shareLog(context: Context) {
 
 /** A popup showing a card's full details (opened from the ℹ button on a card). */
 @Composable
-private fun CardDetailDialog(card: Any, onDismiss: () -> Unit) {
+internal fun CardDetailDialog(card: Any, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(12.dp), color = Color.White) {
             Column(
