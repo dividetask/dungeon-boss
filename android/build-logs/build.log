@@ -19,9 +19,9 @@
 > Task :app:mergeDebugShaders UP-TO-DATE
 > Task :app:compileDebugShaders NO-SOURCE
 > Task :app:generateDebugAssets UP-TO-DATE
-> Task :app:mergeDebugAssets UP-TO-DATE
-> Task :app:compressDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets
 > Task :app:desugarDebugFileDependencies UP-TO-DATE
+> Task :app:compressDebugAssets
 > Task :app:checkDebugDuplicateClasses UP-TO-DATE
 > Task :app:mergeDebugStartupProfile UP-TO-DATE
 > Task :app:mergeExtDexDebug UP-TO-DATE
@@ -47,4 +47,4 @@ w: file:///home/brett/Projects/dungeon-boss/android/app/src/main/java/com/dungeo
 > Task :app:assembleDebug
 
 BUILD SUCCESSFUL in 1s
-36 actionable tasks: 4 executed, 32 up-to-date
+36 actionable tasks: 6 executed, 30 up-to-date
