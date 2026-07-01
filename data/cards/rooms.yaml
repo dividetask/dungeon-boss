@@ -167,7 +167,6 @@ rooms:
     lead_damage: 3
     lead_damage_increment: 1
     draw_on_death: true
-    tags: [monstrous_humanoid]
     copies: 4
 
   - id: room_shade

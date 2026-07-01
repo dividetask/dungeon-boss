@@ -46,7 +46,7 @@ the bait. The current classification tags:
 |-----|----|-----------------------|
 | `arcane` | the six arcane **trap** rooms (Fireball, Power Word, Soul Leach, Antimagic, Black Tentacles, Maze) | **Lich** (`type: trap` + `tag: arcane`) |
 | `undead` | the six undead **creatures** (Skeletons, Zombies, Shade, Zealots, Shadow, Wright) — also on the Undead Hands trap | **Necromancer** (`type: creature` + `tag: undead`) |
-| `monstrous_humanoid` | the glory creatures (Goblins, Hobgoblin Champion, Wyvern, Gladiator, Troll, Hobgoblin Beastmaster) | **Oni** (+4 flat) |
+| `monstrous_humanoid` | the humanoid glory creatures (Goblins, Hobgoblin Champion, Gladiator, Troll, Hobgoblin Beastmaster) | **Oni** (+4 flat) |
 | `goblin` / `hobgoblin` | Goblins / the two Hobgoblin rooms | **Goblin Chieftain** (+1/point) |
 
 ```yaml
@@ -104,7 +104,8 @@ effect:
   - `bait` — the room has at least one icon of this bait type.
 
 The eight bosses: **Lich** (+1/point to `type: trap` + `tag: arcane` rooms),
-**Oni** (+4 flat to `monstrous_humanoid`-tagged rooms), **Vampire**
+**Oni** (+4 flat to `monstrous_humanoid`-tagged rooms — the humanoid glory
+creatures), **Vampire**
 (`self_damage_per_point: 2`), **Medusa** (`unreducible: true` — her final gaze
 ignores all hero/party reductions), **Goblin Chieftain** (+1/point to `goblin`-
 and `hobgoblin`-tagged rooms), **Malevolent Spirit** (`self_damage_per_point:
