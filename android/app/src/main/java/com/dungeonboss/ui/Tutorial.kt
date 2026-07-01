@@ -92,6 +92,9 @@ fun TutorialScreen(onExit: () -> Unit) {
     var index by remember { mutableStateOf(0) }
     val step = steps[index]
 
+    // A card whose full details are open (from tapping its ℹ), or null.
+    var detailCard by remember { mutableStateOf<Any?>(null) }
+
     // A pulsing opacity (0..1) driving every bait glow / timid blink on the board.
     var glow by remember { mutableStateOf(1f) }
     LaunchedEffect(Unit) {
@@ -200,7 +203,7 @@ fun TutorialScreen(onExit: () -> Unit) {
                         encounterClick = null,
                         boostRooms = emptySet(),
                         onBoost = {},
-                        onShowDetail = {},
+                        onShowDetail = { detailCard = it },
                         activeIndex = null,
                         incoming = crawl.party,
                         prediction = crawl.prediction
@@ -224,7 +227,7 @@ fun TutorialScreen(onExit: () -> Unit) {
                         onChooseBoostRoom = {},
                         onBoostWithCard = {},
                         onPlayBlueprints = {},
-                        onShowDetail = {},
+                        onShowDetail = { detailCard = it },
                         activeIndex = null,
                         heroHp = emptyMap(),
                         deadSet = emptyList(),
@@ -257,6 +260,8 @@ fun TutorialScreen(onExit: () -> Unit) {
                 }
             }
         }
+        // Tapping a card's ℹ opens its full details, even in the tutorial.
+        detailCard?.let { CardDetailDialog(it) { detailCard = null } }
     }
 }
 
@@ -330,7 +335,7 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
     val g2 = newGame()
     g2.players[0].roomHand.addAll(listOf(room("room_champion"), room("room_goblins"), room("room_skeletons"), room("room_mimic")))
     steps += TutorialStep(
-        "First, choose your boss. Each boss has different abilities — pick one; the other is discarded.",
+        "First, choose your boss. Each boss has different abilities — tap a card's ℹ to read them. Pick one; the other is discarded.",
         g2,
         decision = Decision(DecisionKind.CHOOSE_BOSS, g2.players[0], listOf(boss("boss_medusa"), boss("boss_oni")))
     )
@@ -347,7 +352,7 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
     val g3 = gameWithDungeons()
     g3.players[0].roomHand.addAll(handCards())
     steps += TutorialStep(
-        "Phase 2: Discard Phase. Discard up to two room cards; you then draw one card plus one for each discarded.",
+        "Phase 2: Draw Phase. First discard any unwanted room cards (up to two), then draw one card plus one for each you discarded.",
         g3,
         decision = Decision(DecisionKind.DISCARD_ROOMS, g3.players[0], g3.players[0].roomHand, allowSkip = true)
     )
