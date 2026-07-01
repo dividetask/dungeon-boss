@@ -7,9 +7,9 @@ bosses:
       arcane: 1
     effect:
       room_bonuses:
-        - match: { bait: arcane, type: trap }
+        - match: { type: trap, tag: arcane }
           per_point: 1
-    ability_text: "Arcane trap rooms deal +1 damage per point."
+    ability_text: "Arcane Trap rooms deal +1 damage per point."
 
   - id: boss_oni
     name: Oni
@@ -19,10 +19,10 @@ bosses:
       arcane: 1
     effect:
       room_bonuses:
-        - match: { tag: goblin }
+        - match: { tag: monstrous_humanoid }
           flat: 4
-    tags: [goblin]
-    ability_text: "All Goblin deal +4 damage."
+    tags: [monstrous_humanoid]
+    ability_text: "All Monstrous Humanoid rooms deal +4 damage."
 
   - id: boss_vampire
     name: Vampire
@@ -54,8 +54,10 @@ bosses:
       room_bonuses:
         - match: { tag: goblin }
           per_point: 1
+        - match: { tag: hobgoblin }
+          per_point: 1
     tags: [goblin]
-    ability_text: "Goblin deal +1 damage per point."
+    ability_text: "Goblin and Hobgoblin rooms deal +1 damage per point."
 
   - id: boss_malevolent_spirit
     name: Malevolent Spirit
@@ -88,7 +90,7 @@ bosses:
       arcane: 1
     effect:
       room_bonuses:
-        - match: { type: creature, bait: undead }
+        - match: { type: creature, tag: undead }
           flat: 2
     ability_text: "All undead creatures in this dungeon deal an additional 2 damage."
 

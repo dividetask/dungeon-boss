@@ -34,8 +34,20 @@ lowercase and de-duplicated; matching is case-insensitive.
 
 Tags let an effect target a whole group of cards at once instead of naming each
 one. For example, the **Goblin Chieftain** boss boosts every card tagged
-`goblin` in its dungeon — so tagging a new room `goblin` automatically makes the
-Chieftain buff it, with no code change.
+`goblin` (or `hobgoblin`) in its dungeon — so tagging a new room `goblin`
+automatically makes the Chieftain buff it, with no code change. Tags also make a
+boss's synergy pool a **fixed, curated set** rather than a bait query: because a
+room card spent to upgrade another room grants its **bait icons** but not its
+**tags**, a tag-matched aura (Lich's `arcane`, Necromancer's `undead`, Oni's
+`monstrous_humanoid`) can't be widened by upgrading an unrelated room to carry
+the bait. The current classification tags:
+
+| Tag | On | Boss that keys off it |
+|-----|----|-----------------------|
+| `arcane` | the six arcane **trap** rooms (Fireball, Power Word, Soul Leach, Antimagic, Black Tentacles, Maze) | **Lich** (`type: trap` + `tag: arcane`) |
+| `undead` | the six undead **creatures** (Skeletons, Zombies, Shade, Zealots, Shadow, Wright) — also on the Undead Hands trap | **Necromancer** (`type: creature` + `tag: undead`) |
+| `monstrous_humanoid` | the glory creatures (Goblins, Hobgoblin Champion, Wyvern, Gladiator, Troll, Hobgoblin Beastmaster) | **Oni** (+4 flat) |
+| `goblin` / `hobgoblin` | Goblins / the two Hobgoblin rooms | **Goblin Chieftain** (+1/point) |
 
 ```yaml
 tags: [goblin, monster]
@@ -91,12 +103,15 @@ effect:
     (its type names a monster/creature).
   - `bait` — the room has at least one icon of this bait type.
 
-The eight bosses: **Lich**, **Oni**, **Vampire**, **Medusa** (`unreducible: true`
-— her final gaze ignores all hero/party reductions),
-**Goblin Chieftain** (+1/point to `goblin`-tagged rooms), **Malevolent Spirit**
-(`self_damage_per_point: 3`), **Kobold Chieftain** (+2 flat to trap rooms), and
-**Necromancer** (+2 flat to undead creatures, i.e. `type: creature` + `bait:
-undead`).
+The eight bosses: **Lich** (+1/point to `type: trap` + `tag: arcane` rooms),
+**Oni** (+4 flat to `monstrous_humanoid`-tagged rooms), **Vampire**
+(`self_damage_per_point: 2`), **Medusa** (`unreducible: true` — her final gaze
+ignores all hero/party reductions), **Goblin Chieftain** (+1/point to `goblin`-
+and `hobgoblin`-tagged rooms), **Malevolent Spirit** (`self_damage_per_point:
+3`), **Kobold Chieftain** (+2 flat to trap rooms), and **Necromancer** (+2 flat
+to undead creatures, i.e. `type: creature` + `tag: undead`). Lich, Necromancer
+and Oni match on a **tag** (not a bait query) so upgrading an unrelated room to
+carry the bait cannot pull it into their aura.
 
 ### Room card (flat field schema)
 

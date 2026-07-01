@@ -56,7 +56,7 @@ rooms:
     bait: { glory: 1 }
     lead_damage: 3
     lead_damage_increment: 1
-    tags: [goblin]
+    tags: [goblin, monstrous_humanoid]
     copies: 4
 
   - id: room_fireball
@@ -68,6 +68,7 @@ rooms:
     lead_damage_increment: 0
     damage_all: 3
     damage_all_increment: 1
+    tags: [arcane]
     copies: 4
 
   - id: room_skeletons
@@ -93,13 +94,14 @@ rooms:
 
   # --- Growth rooms (basic, 4 damage, +1 per level, grow on death) ---
   - id: room_champion
-    name: Champion
+    name: Hobgoblin Champion
     type: monster
     advanced: false
     bait: { glory: 1 }
     lead_damage: 4
     lead_damage_increment: 1
     grows_on_death: true
+    tags: [hobgoblin, monstrous_humanoid]
     copies: 4
 
   - id: room_succubus
@@ -154,6 +156,7 @@ rooms:
     damage_all: 2
     damage_all_increment: 1
     draw_on_death: true
+    tags: [arcane]
     copies: 4
 
   - id: room_wyvern
@@ -164,6 +167,7 @@ rooms:
     lead_damage: 3
     lead_damage_increment: 1
     draw_on_death: true
+    tags: [monstrous_humanoid]
     copies: 4
 
   - id: room_shade
@@ -201,6 +205,7 @@ rooms:
     damage_all: 1
     damage_all_increment: 1
     discard_all_damage: 2
+    tags: [arcane]
     copies: 4
 
   # --- Poison / delayed traps (now basic) ---
@@ -241,6 +246,7 @@ advanced_rooms:
     damage_all_increment: 1
     damage_filter: mage
     room_resist: true
+    tags: [arcane]
     copies: 2
 
   - id: adv_zealots
@@ -280,6 +286,7 @@ advanced_rooms:
     lead_damage_increment: 1
     grows_on_death: true
     room_resist: true
+    tags: [monstrous_humanoid]
     copies: 2
 
   - id: adv_troll
@@ -290,6 +297,7 @@ advanced_rooms:
     lead_damage: 10
     lead_damage_increment: 4
     grows_on_death: true
+    tags: [monstrous_humanoid]
     copies: 2
 
   - id: adv_shadow
@@ -341,6 +349,7 @@ advanced_rooms:
     damage_all_increment: 1
     damage_rear: 5
     damage_rear_increment: 1
+    tags: [arcane]
     copies: 2
 
   # --- Maze: poison resolves 3x here (helps when a poison trap precedes it) ---
@@ -354,6 +363,7 @@ advanced_rooms:
     damage_all: 4
     damage_all_increment: 1
     poison_ticks: 3
+    tags: [arcane]
     copies: 2
 
   # --- Aura rooms (re-added): buff other traps / creatures ---
@@ -370,7 +380,7 @@ advanced_rooms:
     copies: 2
 
   - id: adv_beast_tamer
-    name: Beast Tamer
+    name: Hobgoblin Beastmaster
     type: monster
     advanced: true
     bait: { glory: 1 }
@@ -379,4 +389,5 @@ advanced_rooms:
     room_aura:
       match: { type: creature }
       amount: 2
+    tags: [hobgoblin, monstrous_humanoid]
     copies: 2
