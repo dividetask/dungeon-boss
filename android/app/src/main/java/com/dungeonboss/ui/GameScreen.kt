@@ -73,7 +73,7 @@ import com.dungeonboss.model.Room
 import kotlinx.coroutines.delay
 
 /** Bump this every UI change so the on-screen tag confirms which build is running. */
-const val UI_BUILD = "46 (tutorial rewritten for the new rules)"
+const val UI_BUILD = "47 (tutorial narration polish; parties step animates)"
 
 /** What the human has tapped in hand while building, awaiting a dungeon slot. */
 internal data class Selection(val cardId: String)

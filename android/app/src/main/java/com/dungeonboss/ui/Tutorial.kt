@@ -74,7 +74,9 @@ private class TutorialStep(
     val crawl: CrawlView? = null,
     val highlight: Highlight = Highlight.NONE,
     /** Heroes the spotlight cycles through (for [Highlight.CYCLE]). */
-    val cycleHeroes: List<Hero> = emptyList()
+    val cycleHeroes: List<Hero> = emptyList(),
+    /** When set, the step alternates between [game] and [altGame] every ~1.5s. */
+    val altGame: Game? = null
 )
 
 private const val HUMAN = "Player 1"
@@ -115,6 +117,18 @@ fun TutorialScreen(onExit: () -> Unit) {
         }
     }
 
+    // Steps that alternate between two snapshots (e.g. lone heroes ↔ a party).
+    var alt by remember(index) { mutableStateOf(false) }
+    LaunchedEffect(index) {
+        if (step.altGame != null) {
+            while (true) {
+                delay(1500)
+                alt = !alt
+            }
+        }
+    }
+    val shownGame = if (alt && step.altGame != null) step.altGame else step.game
+
     val activeHero = if (cycling) step.cycleHeroes.getOrNull(cycle) else null
     val baitHighlight: Set<Bait> = when (step.highlight) {
         Highlight.FLASH_ALL_BAIT -> Bait.entries.toSet()
@@ -125,7 +139,7 @@ fun TutorialScreen(onExit: () -> Unit) {
     val highlightHeroId = activeHero?.id
     val timidBlink = step.highlight == Highlight.TIMID_POINTS
     val timidGlow = if (timidBlink) glow else 1f
-    val human = step.game.players.first { it.name == HUMAN }
+    val human = shownGame.players.first { it.name == HUMAN }
 
     Box(
         Modifier
@@ -150,7 +164,7 @@ fun TutorialScreen(onExit: () -> Unit) {
                 Text("Dungeon Boss", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Text("· Tutorial ${index + 1}/${steps.size}", fontSize = 12.sp, color = Palette.SubText)
                 Spacer(Modifier.weight(1f))
-                PlayerStatsStrip(step.game, human, highlightBait = totalsBait, highlightPoints = timidBlink, glow = glow)
+                PlayerStatsStrip(shownGame, human, highlightBait = totalsBait, highlightPoints = timidBlink, glow = glow)
                 Box(
                     Modifier
                         .clip(RoundedCornerShape(6.dp))
@@ -173,10 +187,10 @@ fun TutorialScreen(onExit: () -> Unit) {
             ) {
                 val crawl = step.crawl
                 if (crawl != null) {
-                    val owner = step.game.players.first { it.name == step.viewed }
+                    val owner = shownGame.players.first { it.name == step.viewed }
                     DungeonBoard(
                         tick = 0,
-                        game = step.game,
+                        game = shownGame,
                         player = owner,
                         decision = null,
                         onChooseBoss = {},
@@ -194,7 +208,7 @@ fun TutorialScreen(onExit: () -> Unit) {
                 } else {
                     GameBody(
                         tick = 0,
-                        game = step.game,
+                        game = shownGame,
                         humanName = HUMAN,
                         viewed = step.viewed,
                         decision = step.decision,
@@ -316,7 +330,7 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
     val g2 = newGame()
     g2.players[0].roomHand.addAll(listOf(room("room_champion"), room("room_goblins"), room("room_skeletons"), room("room_mimic")))
     steps += TutorialStep(
-        "Each game starts by choosing your boss from two cards. The boss guards the right end of your dungeon and hits the lead hero.",
+        "Phase 1: Choose your Boss. Each boss has different abilities — pick one; the other is discarded.",
         g2,
         decision = Decision(DecisionKind.CHOOSE_BOSS, g2.players[0], listOf(boss("boss_medusa"), boss("boss_oni")))
     )
@@ -325,7 +339,7 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
     val g3 = gameWithDungeons()
     g3.players[0].roomHand.addAll(handCards())
     steps += TutorialStep(
-        "Each turn you may discard up to two room cards, then draw 1 card plus 1 for every card you discarded — so discarding digs deeper for the rooms you want.",
+        "Phase 2: Discard Phase. Discard up to two room cards; you then draw one card plus one for each discarded.",
         g3,
         decision = Decision(DecisionKind.DISCARD_ROOMS, g3.players[0], g3.players[0].roomHand, allowSkip = true)
     )
@@ -334,7 +348,7 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
     val g4 = gameWithDungeons()
     g4.players[0].roomHand.addAll(handCards())
     steps += TutorialStep(
-        "Then you build: place a room into any of the 5 slots. Placing onto an occupied slot replaces that room. A hero enters from the left and crawls right toward the boss.",
+        "Phase 3: Build Phase. Place a room into any of the 5 slots — an occupied slot is replaced. Heroes crawl from the left toward the boss.",
         g4,
         decision = Decision(DecisionKind.BUILD_ROOM, g4.players[0], g4.players[0].roomHand, allowSkip = true)
     )
@@ -394,16 +408,18 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
     val g11 = soloGame(points = 3)
     g11.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric", "hero_mage"))
     steps += TutorialStep(
-        "You score a point per hero that dies in your dungeon. As your points rise, heroes grow cautious: a hero (or party) enters only if its courage is at least your points, otherwise it stays away.",
+        "You score a point per hero that dies in your dungeon. As your points rise, heroes grow cautious: a hero (or party) enters only if its courage is at least your point total, otherwise it stays away.",
         g11, highlight = Highlight.TIMID_POINTS
     )
 
-    // 12 — stay and form parties
-    val g12 = soloGame(points = 3)
-    g12.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric", "hero_mage"))
+    // 12 — stay and form parties (alternates two lone heroes <-> them as a party)
+    val g12a = soloGame(points = 3)
+    g12a.town.addAll(lone("hero_barbarian", "hero_rogue"))
+    val g12b = soloGame(points = 3)
+    g12b.town.add(Party(listOf(hero("hero_barbarian"), hero("hero_rogue"))))
     steps += TutorialStep(
-        "Heroes that skip a dungeon (too timid, or a bait tie) stay in town and band into parties at the end of the round, each recruiting the leftmost hero of a class it lacks.",
-        g12
+        "Heroes that skip a dungeon stay in town and, at the end of the round, band together into a party.",
+        g12a, altGame = g12b
     )
 
     // 13 — party crawl + overkill
