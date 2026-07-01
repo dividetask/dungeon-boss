@@ -51,10 +51,13 @@ bosses:
 
   - id: boss_medusa
     name: Medusa
-    lead_damage: 8
+    lead_damage: 6
     bait:
       glory: 1
-    ability_text: ""
+      arcane: 1
+    effect:
+      unreducible: true
+    ability_text: "Medusa's petrifying gaze cannot be reduced — her damage ignores every hero and party reduction."
 
   - id: boss_goblin_chieftain
     name: Goblin Chieftain
