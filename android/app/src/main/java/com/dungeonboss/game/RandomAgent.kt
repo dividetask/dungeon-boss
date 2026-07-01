@@ -6,15 +6,12 @@ import com.dungeonboss.model.Upgrade
 import kotlin.random.Random
 
 /**
- * An automated player. Given a [Decision], it picks at random and returns a
- * (choiceId, target) pair:
- *   - choiceId: the chosen card id, or null to skip
- *   - target:   only meaningful for build decisions — "new" to add a room, or a
- *               room index to replace / attach to. Holds no game state.
+ * An automated player that picks at random. A simple opponent / baseline. Holds
+ * no game state (it reads the live hand off the decision).
  */
-class RandomAgent(private val rng: Random = Random.Default) {
+class RandomAgent(private val rng: Random = Random.Default) : Agent {
 
-    fun choose(decision: Decision): Pair<String?, Any?> = when (decision.kind) {
+    override fun choose(decision: Decision): Pair<String?, Any?> = when (decision.kind) {
         DecisionKind.BUILD_ROOM -> buildMove(decision)
         DecisionKind.DISCARD_ROOM ->
             Pair(decision.player.roomHand.randomOrNull(rng)?.id, null)
