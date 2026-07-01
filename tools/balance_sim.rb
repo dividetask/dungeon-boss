@@ -157,7 +157,8 @@ end
 # Resist modes: :normal, :no_halve, :no_reduce.
 # ---------------------------------------------------------------------------
 class CrawlResolver
-  Result = Struct.new(:deaths, :survivors, :dead, :damage_to, keyword_init: true)
+  Step = Struct.new(:room_index, :encounter, :hero, :damage, :hp_after, :died, keyword_init: true)
+  Result = Struct.new(:deaths, :survivors, :dead, :damage_to, :log, keyword_init: true)
 
   def self.resolve(heroes, dungeon, boss_bonus: 0)
     new(heroes, dungeon, boss_bonus).resolve
@@ -174,19 +175,23 @@ class CrawlResolver
     @poison = Hash.new(0)
     @delayed = Hash.new(0)
     @damage_to = Hash.new(0) # hero -> total damage taken (for threat metrics)
+    @log = []                # ordered Step records (for the trace mode)
+    @room_index = 0
     heroes.each { |h| @health[h] = h.max_hp }
   end
 
   def resolve
-    @dungeon.encounters.each do |enc|
+    @dungeon.encounters.each_with_index do |enc, idx|
       break if @alive.empty?
+      @room_index = idx
       @deaths_here = 0
       poison_tick(enc)
       delayed_tick(enc) unless @alive.empty?
       apply_damage(enc) unless @alive.empty?
       grow(enc)
     end
-    Result.new(deaths: @dead.size, survivors: @alive.dup, dead: @dead.dup, damage_to: @damage_to)
+    Result.new(deaths: @dead.size, survivors: @alive.dup, dead: @dead.dup,
+               damage_to: @damage_to, log: @log)
   end
 
   private
@@ -315,7 +320,10 @@ class CrawlResolver
     dmg = damage_taken(hero, enc, amount, resist)
     @health[hero] -= dmg
     @damage_to[hero] += dmg
-    if @health[hero] <= 0
+    died = @health[hero] <= 0
+    @log << Step.new(room_index: @room_index, encounter: enc, hero: hero,
+                     damage: dmg, hp_after: @health[hero], died: died)
+    if died
       idx = @alive.index { |h| h.equal?(hero) }
       @alive.delete_at(idx) if idx
       @dead << hero
@@ -374,6 +382,9 @@ def report
   room_threat_table
   archetype_experiment
   boss_scaling
+  full_dungeon_experiment
+  boss_tournament
+  trace_demo
 end
 
 # --- 1) Per-room threat: damage to a standard 4-class party, one encounter ---
@@ -444,6 +455,99 @@ def boss_scaling
     tag = be.unreducible? ? " [unreducible]" : ""
     printf("   %-18s %s%s\n", bdef["name"], vals.map { |v| format('%6d', v) }.join(" "), tag)
   end
+end
+
+# --- 4/5) Themed full dungeons: each boss in its ideal 5-room dungeon -------
+# Synergy bosses get rooms their ability buffs; the three non-synergy bosses
+# (Vampire, Malevolent Spirit, Medusa) get a generic strong "bruiser" dungeon,
+# reflecting that they just pick good rooms rather than build around a theme.
+GENERIC_BRUISERS = %w[room_champion room_succubus room_mimic adv_troll room_zombies].freeze
+BOSS_DUNGEONS = {
+  "boss_lich"             => %w[room_fireball room_power_word room_soul_leach adv_maze adv_black_tentacles],
+  "boss_necromancer"      => %w[room_skeletons room_zombies room_shade adv_shadow adv_wright],
+  "boss_oni"              => %w[room_goblins room_champion adv_gladiator adv_troll adv_beast_tamer],
+  "boss_goblin_chieftain" => %w[room_goblins room_champion adv_beast_tamer room_champion room_goblins],
+  "boss_kobold_chieftain" => %w[room_fireball room_pit room_floor_spike room_poison_gas adv_antimagic_room],
+  "boss_vampire"          => GENERIC_BRUISERS,
+  "boss_malevolent_spirit"=> GENERIC_BRUISERS,
+  "boss_medusa"           => GENERIC_BRUISERS
+}.freeze
+
+# Game arc: (hero level, owner points) — early / mid / late play.
+ARC = [[0, 0], [2, 3], [4, 6]].freeze
+
+# Fresh instances every call (growth mutates a room's level in place).
+def themed_dungeon(bid)
+  Dungeon.new(rooms: BOSS_DUNGEONS.fetch(bid).map { |r| room(r) }, boss: boss(bid))
+end
+
+def full_dungeon_experiment
+  puts "\n## 4. Full themed dungeon (5 rooms + boss) vs a 4-class party — deaths/4"
+  puts "   Synergy bosses in their element; non-synergy bosses get a generic dungeon."
+  puts "   Columns are the game arc: hero level / owner points.\n\n"
+  printf("   %-20s %s\n", "boss", ARC.map { |l, p| format('%-9s', "L#{l}/#{p}pt") }.join(" "))
+  DB[:bosses].keys.each do |bid|
+    cells = ARC.map do |lvl, pts|
+      r = CrawlResolver.resolve(party(*ALL_CLASSES, level: lvl), themed_dungeon(bid), boss_bonus: pts)
+      format('%-9s', "#{r.deaths}/4")
+    end
+    printf("   %-20s %s\n", DB[:bosses][bid]["name"], cells.join(" "))
+  end
+end
+
+# Two defensive extremes so we see each boss's best and worst matchup:
+#   balanced   = one of every class -> carries every reduction filter (Rogue -2
+#                traps, Mage -4 arcane, Cleric -4 undead). Worst case for bosses
+#                whose bait/rooms those filters counter.
+#   no-reducer = 4 Barbarians -> no party auras at all (only self-halving).
+TOURNAMENT_PARTIES = [
+  ["balanced (all reducers)", ALL_CLASSES],
+  ["no-reducer (4x Barb)", Array.new(4, "hero_barbarian")]
+].freeze
+
+def boss_tournament
+  puts "\n## 5. Boss tournament — kills summed across the arc (ideal dungeon per boss)"
+  puts "   Two parties: a balanced 4-class party (all reducers) vs 4 Barbarians"
+  puts "   (no reducers). Each column is kills / 12 (3 arc stages x max 4). Sorted"
+  puts "   by the balanced column.\n\n"
+  rows = DB[:bosses].keys.map do |bid|
+    cols = TOURNAMENT_PARTIES.map do |_, pids|
+      ARC.sum do |lvl, pts|
+        CrawlResolver.resolve(pids.map { |i| hero(i, level: lvl) }, themed_dungeon(bid), boss_bonus: pts).deaths
+      end
+    end
+    [DB[:bosses][bid]["name"], cols]
+  end
+  rows.sort_by! { |_, cols| -cols[0] }
+  printf("   %-4s%-20s %-20s %-18s\n", "", "boss", *TOURNAMENT_PARTIES.map { |n, _| n })
+  rows.each_with_index do |(name, cols), i|
+    printf("   %2d. %-20s %-20s %-18s\n", i + 1, name,
+           "#{cols[0]}/12", "#{cols[1]}/12")
+  end
+end
+
+# --- 6) Damage trace: inspect any single matchup step by step ---------------
+# Reusable: trace_crawl(party(...), themed_dungeon("boss_x"), boss_bonus: N)
+def trace_crawl(heroes, dungeon, boss_bonus: 0)
+  res = CrawlResolver.resolve(heroes, dungeon, boss_bonus: boss_bonus)
+  puts "   party: #{heroes.map { |h| "#{h.name}(#{h.max_hp}hp)" }.join(', ')}   boss points: #{boss_bonus}"
+  cur = nil
+  res.log.each do |s|
+    if s.room_index != cur
+      cur = s.room_index
+      label = s.encounter.boss? ? "BOSS: #{s.encounter.name}" : "slot #{s.room_index}: #{s.encounter.name}"
+      puts "   -- #{label} --"
+    end
+    printf("      %-10s -%-2d -> %3d hp%s\n", s.hero.name, s.damage, s.hp_after, s.died ? "   *** DIES ***" : "")
+  end
+  puts "   => #{res.deaths} died, #{res.survivors.size} survived" \
+       "#{res.survivors.empty? ? '' : " (#{res.survivors.map(&:name).join(', ')})"}"
+end
+
+def trace_demo
+  puts "\n## 6. Damage trace (example) — 4-class party (L0) vs Oni glory-monster dungeon, 0 pts"
+  puts "   Every hit shown, incl. cascades. Use trace_crawl(...) for any matchup.\n\n"
+  trace_crawl(party(*ALL_CLASSES, level: 0), themed_dungeon("boss_oni"), boss_bonus: 0)
 end
 
 report if __FILE__ == $PROGRAM_NAME
