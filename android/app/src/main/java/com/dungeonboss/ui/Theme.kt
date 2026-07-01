@@ -52,7 +52,7 @@ object Palette {
 /** Emoji art and bait formatting — the Android analogue of CardPresenter. */
 object CardArt {
     val baitEmoji = mapOf(
-        Bait.GLORY to "🏆", Bait.RICHES to "💰", Bait.UNDEAD to "💀", Bait.POWER to "🔮"
+        Bait.GLORY to "🏆", Bait.RICHES to "💰", Bait.UNDEAD to "💀", Bait.ARCANE to "🔮"
     )
 
     private val heroArt = mapOf(
@@ -81,7 +81,7 @@ object CardArt {
         Bait.GLORY -> Palette.PipGlory
         Bait.RICHES -> Palette.PipRiches
         Bait.UNDEAD -> Palette.PipUndead
-        Bait.POWER -> Palette.PipPower
+        Bait.ARCANE -> Palette.PipPower
     }
 
     /** Format a dungeon's bait totals as count + icon, e.g. "2 🏆, 5 💰". */

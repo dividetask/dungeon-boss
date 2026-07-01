@@ -52,12 +52,15 @@ object SetupPhase {
         game.clearBossCandidates(player)
     }
 
-    /** Apply a player's first-room choice (mandatory; must be an actual room). */
-    fun placeFirstRoom(player: Player, roomId: String) {
+    /**
+     * Apply a player's first-room choice (mandatory; must be an actual room),
+     * placing it into the chosen slot (any of the 5).
+     */
+    fun placeFirstRoom(player: Player, roomId: String, slot: Int = 0) {
         val card = player.takeRoomFromHand(roomId)
             ?: throw IllegalArgumentException("room not in hand: $roomId")
         val room = card as? Room
             ?: throw IllegalArgumentException("first placement must be a room")
-        player.dungeon!!.addRoomToLeft(room)
+        player.dungeon!!.placeRoom(slot, room)
     }
 }

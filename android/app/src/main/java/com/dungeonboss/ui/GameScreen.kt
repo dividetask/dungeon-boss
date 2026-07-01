@@ -54,8 +54,9 @@ import com.dungeonboss.game.Decision
 import com.dungeonboss.game.DecisionKind
 import com.dungeonboss.game.EncounterDamage
 import com.dungeonboss.game.Game
-import com.dungeonboss.game.phases.BaitPhase
-import com.dungeonboss.game.phases.CrawlPhase
+import com.dungeonboss.game.phases.DiscardPhase
+import com.dungeonboss.game.phases.EnticePhase
+import com.dungeonboss.game.phases.GauntletPhase
 import com.dungeonboss.game.Party
 import com.dungeonboss.game.PartyCrawlResolver
 import com.dungeonboss.game.Player
@@ -69,15 +70,13 @@ import com.dungeonboss.model.Encounter
 import com.dungeonboss.model.Hero
 import com.dungeonboss.model.PlacedRoom
 import com.dungeonboss.model.Room
-import com.dungeonboss.model.Upgrade
 import kotlinx.coroutines.delay
 
 /** Bump this every UI change so the on-screen tag confirms which build is running. */
-const val UI_BUILD = "49 (tutorial step 7: blink timid markers and points total)"
+const val UI_BUILD = "49 (tutorial: Draw phase wraps discard; boss info hint)"
 
 /** What the human has tapped in hand while building, awaiting a dungeon slot. */
-// internal (not private) so the reusable internal GameBody can name it.
-internal data class Selection(val cardId: String, val isUpgrade: Boolean)
+internal data class Selection(val cardId: String)
 
 @Composable
 fun GameScreen(vm: GameViewModel = viewModel()) {
@@ -91,12 +90,19 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
     val viewed = remember { mutableStateOf(humanName) }
     val decision = game?.currentDecision()
     var selection by remember(decision) { mutableStateOf<Selection?>(null) }
+    // Room ids the human has tapped to discard this Discard phase, as a multiset
+    // (an id repeats once per copy marked), so multiple copies of a card can be
+    // discarded. Total size is capped at DiscardPhase.MAX_DISCARDS.
+    var discardSelection by remember(decision) { mutableStateOf<List<String>>(emptyList()) }
 
     // A card whose full details are being shown in a popup (ℹ button), or null.
     var detailCard by remember { mutableStateOf<Any?>(null) }
     // Whether the full all-players standings dialog is open.
     var showStandings by remember { mutableStateOf(false) }
-    // Whether the (non-interactive) tutorial overlay is showing.
+    // Number of players for the next new game (the New game button lives at the
+    // bottom-right; the ☰ menu keeps the count selector).
+    var playerCount by remember { mutableStateOf(2) }
+    // Whether the non-interactive tutorial overlay is showing.
     var showTutorial by remember { mutableStateOf(false) }
 
     // Pre-crawl interaction state: an ability card awaiting a room target, and a
@@ -123,7 +129,7 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
         activeIndex.value = null
         heroHp.clear(); deadSet.clear()
         val participants = outcome.result.participants
-        participants.forEachIndexed { i, h -> heroHp[i] = h.health }
+        participants.forEachIndexed { i, h -> heroHp[i] = h.maxHp }
         viewed.value = outcome.player.name
         delay(600)
 
@@ -166,7 +172,8 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                     game = game,
                     human = vm.human,
                     statusText = game?.let { "Round ${it.round} · ${it.stage.name.lowercase()}" },
-                    onNewGame = { count -> vm.newGame(count) },
+                    playerCount = playerCount,
+                    onPlayerCount = { playerCount = it },
                     onShareLog = { shareLog(context) },
                     onShowStandings = { showStandings = true },
                     onStartTutorial = { showTutorial = true }
@@ -187,8 +194,14 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                 }
 
                 if (game == null) {
+                    Button(
+                        onClick = { vm.newGame(playerCount) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
+                    ) {
+                        Text("New game", color = Color.White)
+                    }
                     Text(
-                        "Tap New game to begin. You are Player 1; the others are computers.",
+                        "You are Player 1; the others are computers. Set the player count in the ☰ menu.",
                         color = Palette.SubText, fontSize = 13.sp
                     )
                 } else {
@@ -201,6 +214,19 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         selection = selection,
                         onSelect = { sel -> selection = if (selection?.cardId == sel.cardId) null else sel },
                         onDecide = { choice, target -> vm.decide(choice, target) },
+                        discardSelection = discardSelection,
+                        onToggleDiscard = { id ->
+                            // Tapping a card cycles how many copies of it are marked to
+                            // discard: 0 → 1 → 2 … up to the copies held (and the shared
+                            // MAX_DISCARDS budget), then back to 0 ("discard none").
+                            val hand = game?.players?.firstOrNull { it.name == humanName }?.roomHand ?: emptyList()
+                            val copiesInHand = hand.count { it.id == id }
+                            val currentForId = discardSelection.count { it == id }
+                            val otherSelected = discardSelection.size - currentForId
+                            val cap = minOf(copiesInHand, DiscardPhase.MAX_DISCARDS - otherSelected)
+                            val next = if (currentForId >= cap) 0 else currentForId + 1
+                            discardSelection = discardSelection.filter { it != id } + List(next) { id }
+                        },
                         pendingAbility = pendingAbility,
                         onPickAbility = { card ->
                             when {
@@ -220,7 +246,6 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         },
                         onPlayBlueprints = { card -> vm.playAbility(card.id) },
                         onShowDetail = { card -> detailCard = card },
-                        onNewGame = { vm.newGame(game.players.size) },
                         activeIndex = activeIndex.value,
                         heroHp = heroHp,
                         deadSet = deadSet
@@ -239,6 +264,7 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         onDecide = { c, t -> vm.decide(c, t) },
                         onNextTurn = { vm.nextTurn() },
                         onSend = { vm.sendNextParty() },
+                        onNewGame = { vm.newGame(playerCount) },
                         onUndo = { vm.undoDiscard() },
                         onUndoBoss = { vm.undoBossChoice() },
                         onUndoPlacement = { vm.undoPlacement() },
@@ -246,7 +272,8 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         onContinueQuiet = { vm.finishQuietRound() },
                         onCancelAbility = { pendingAbility = null },
                         pendingAbility = pendingAbility,
-                        pendingBoostRoom = pendingBoostRoom
+                        pendingBoostRoom = pendingBoostRoom,
+                        discardSelection = discardSelection
                     )
                 }
             }
@@ -262,9 +289,7 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                 onDismiss = { showStandings = false }
             )
         }
-        // The tutorial is a full-screen, non-interactive overlay. Finishing or
-        // exiting it returns to whatever is underneath — the Load screen when
-        // launched there, where the player can start a game or replay it.
+        // The tutorial is a full-screen overlay drawn above the game.
         if (showTutorial) {
             TutorialScreen(onExit = { showTutorial = false })
         }
@@ -277,12 +302,12 @@ private fun TopBar(
     game: Game?,
     human: Player?,
     statusText: String?,
-    onNewGame: (Int) -> Unit,
+    playerCount: Int,
+    onPlayerCount: (Int) -> Unit,
     onShareLog: () -> Unit,
     onShowStandings: () -> Unit,
     onStartTutorial: () -> Unit
 ) {
-    var players by remember { mutableStateOf(2) }
     var menuOpen by remember { mutableStateOf(false) }
     // The menu is hidden by default during a game; it is always shown when no
     // game is in progress so the player can start one. The ☰ toggle reveals it.
@@ -300,29 +325,14 @@ private fun TopBar(
                 Text("Dungeon Boss", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 statusText?.let { Text(it, fontSize = 12.sp, color = Palette.SubText, modifier = Modifier.padding(bottom = 3.dp)) }
             }
-            // The stats strip takes the flexible middle and scrolls if it would
-            // overflow (e.g. 4 players), so the Share log and ☰ controls always
-            // stay on-screen. It is hidden while the menu is open to leave room
-            // for those controls — the menu's own rows are what matter then.
-            if (game != null && human != null && !showMenu) {
+            // Push the per-player stats strip to the right, against the ☰ toggle.
+            Spacer(Modifier.weight(1f))
+            if (game != null && human != null) {
                 // key(tick): these read off the stable Player objects, which
                 // Compose would otherwise skip.
                 key(tick) {
-                    Box(
-                        Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                        contentAlignment = Alignment.CenterEnd
-                    ) {
-                        PlayerStatsStrip(game, human, onClick = onShowStandings)
-                    }
+                    PlayerStatsStrip(game, human, onClick = onShowStandings)
                 }
-            } else {
-                Spacer(Modifier.weight(1f))
-            }
-            // Share log sits in the top-right, just left of the ☰ toggle. It is
-            // only shown when the menu is revealed (showMenu): always on the Load
-            // screen (no game in progress) and on any screen once ☰ is pushed.
-            if (showMenu) {
-                OutlinedButton(onClick = onShareLog) { Text("Share log", fontSize = 13.sp, maxLines = 1) }
             }
             Box(
                 Modifier
@@ -338,27 +348,22 @@ private fun TopBar(
 
         if (showMenu) {
             Text("UI build $UI_BUILD", fontSize = 10.sp, color = Palette.SubText)
-            // New game + Tutorial on their own line underneath the title.
+            // Tutorial + Share log (New game lives at the bottom-right).
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Button(
-                    onClick = { onNewGame(players) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
-                ) {
-                    Text("New game", color = Color.White)
-                }
                 OutlinedButton(onClick = onStartTutorial) { Text("Tutorial", fontSize = 13.sp) }
+                OutlinedButton(onClick = onShareLog) { Text("Share log", fontSize = 13.sp) }
             }
-            // Player count selector.
+            // Player count selector (applies to the next New game).
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Players:", fontSize = 12.sp, color = Palette.SubText)
                 (2..4).forEach { n ->
-                    val active = players == n
+                    val active = playerCount == n
                     Box(
                         Modifier
                             .clip(RoundedCornerShape(6.dp))
                             .background(if (active) Palette.Accent else Color.White)
                             .border(1.dp, if (active) Palette.Accent else Color(0xFFCCCCCC), RoundedCornerShape(6.dp))
-                            .clickable { players = n }
+                            .clickable { onPlayerCount(n) }
                             .padding(horizontal = 10.dp, vertical = 3.dp)
                     ) {
                         Text("$n", color = if (active) Color.White else Palette.SubText, fontSize = 12.sp)
@@ -379,6 +384,8 @@ internal fun GameBody(
     selection: Selection?,
     onSelect: (Selection) -> Unit,
     onDecide: (String?, Any?) -> Unit,
+    discardSelection: List<String>,
+    onToggleDiscard: (String) -> Unit,
     pendingAbility: AbilityCard?,
     onPickAbility: (AbilityCard) -> Unit,
     onTargetRoom: (Int) -> Unit,
@@ -387,7 +394,6 @@ internal fun GameBody(
     onBoostWithCard: (String) -> Unit,
     onPlayBlueprints: (AbilityCard) -> Unit,
     onShowDetail: (Any) -> Unit,
-    onNewGame: () -> Unit,
     activeIndex: Int?,
     heroHp: Map<Int, Int>,
     deadSet: List<Int>,
@@ -407,10 +413,10 @@ internal fun GameBody(
     val roomHandFull = human.roomHand.size >= Player.MAX_ROOM_HAND
     val holdsDrawRooms = human.abilityHand.any { AbilityEffect.forCard(it).drawRooms != null }
 
-    if (game.over()) GameOverBanner(tick, game, onNewGame)
+    if (game.over()) GameOverBanner(tick, game)
 
     val choosingFirst = decision?.kind == DecisionKind.PLACE_FIRST_ROOM && decision.player == human
-    val choosingDiscard = decision?.kind == DecisionKind.DISCARD_ROOM && decision.player == human
+    val choosingDiscard = decision?.kind == DecisionKind.DISCARD_ROOMS && decision.player == human
     val choosingBuild = decision?.kind == DecisionKind.BUILD_ROOM && decision.player == human
     val boostingHere = preCrawl && crawlOwner == human && pendingBoostRoom != null
 
@@ -438,17 +444,34 @@ internal fun GameBody(
                         // Identical cards are shown once with a ×count badge.
                         human.roomHand.groupBy { it.id }.values.forEach { group ->
                             val card = group.first()
-                            val isUpgrade = card is Upgrade
+                            // First room and Build both pick a card, then tap a slot.
+                            val selectableForBuild = choosingBuild || (choosingFirst && card is Room && !card.advanced)
                             val modifier = when {
                                 boostingHere -> Modifier.clickable { onBoostWithCard(card.id) }
-                                choosingDiscard || (choosingFirst && card is Room && !card.advanced) ->
-                                    Modifier.clickable { onDecide(card.id, null) }
-                                choosingBuild -> Modifier.clickable { onSelect(Selection(card.id, isUpgrade)) }
+                                choosingDiscard -> Modifier.clickable { onToggleDiscard(card.id) }
+                                selectableForBuild -> Modifier.clickable { onSelect(Selection(card.id)) }
                                 else -> Modifier
                             }
+                            val discardCount = if (choosingDiscard) discardSelection.count { it == card.id } else 0
+                            val highlighted = selection?.cardId == card.id || discardCount > 0
                             WithCount(group.size) {
-                                HandCardView(card, modifier, highlighted = selection?.cardId == card.id,
-                                    onInfo = { onShowDetail(card) })
+                                Box {
+                                    HandCardView(card, modifier, highlighted = highlighted,
+                                        onInfo = { onShowDetail(card) })
+                                    if (discardCount > 0) {
+                                        Box(
+                                            Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .padding(3.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Palette.Damage)
+                                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                                        ) {
+                                            Text("🗑×$discardCount", color = Color.White,
+                                                fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
                             }
                         }
                         human.abilityHand.groupBy { it.id }.values.forEach { group ->
@@ -487,42 +510,49 @@ internal fun GameBody(
     val viewedPlayer = game.players.first { it.name == viewedName }
     val outcome = game.lastOutcomes.firstOrNull()
     val isCrawledHere = outcome != null && outcome.player.name == viewedName
-    val buildingHere = choosingBuild && viewedPlayer == human
+    // First-room placement and Build both place into a slot on your own dungeon.
+    val placingHere = (choosingBuild || choosingFirst) && viewedPlayer == human
 
-    // The selected build card (if any), used to gate where it may be placed:
-    //   basic room    → a new entrance slot, or replace any room
-    //   upgrade       → attach to any room (no new slot)
-    //   advanced room → replace only a room that shares one of its bait icons
-    val selectedCard = if (buildingHere && selection != null) {
+    // The selected card (if any), used to gate which slot it may go in:
+    //   basic room    → any slot (empty fills, occupied replaces)
+    //   advanced room → an empty slot, or replace a room sharing a bait icon
+    val selectedCard = if (placingHere && selection != null) {
         human.roomHand.firstOrNull { it.id == selection.cardId }
     } else null
-    val selectedBasicRoom = selectedCard is Room && !selectedCard.advanced
+    val selectedRoom = selectedCard as? Room
 
-    fun canPlaceOnRoom(i: Int): Boolean {
+    // Whether the selected card may be PLACED into slot [slot] (empty or occupied).
+    fun canPlaceInSlot(slot: Int): Boolean {
         val card = selectedCard ?: return false
-        return if (card is Room && card.advanced) {
-            viewedPlayer.dungeon?.rooms?.getOrNull(i)?.bait?.shares(card.bait) == true
-        } else true // basic room replaces any; upgrade attaches to any
+        val occupant = viewedPlayer.dungeon?.slots?.getOrNull(slot)
+        return when {
+            card is Room && card.advanced ->
+                occupant == null || occupant.bait.shares(card.bait)   // empty, or bait-share replace
+            card is Room -> true                                       // basic: any slot
+            else -> false
+        }
     }
 
-    // Decide what tapping a room/slot does for the viewed dungeon.
-    val targetingAbilityHere = pendingAbility != null && crawlOwner == viewedPlayer
-    val roomClick: ((Int) -> Unit)? = when {
-        targetingAbilityHere -> { i -> onTargetRoom(i) }
-        buildingHere && selection != null -> { i -> if (canPlaceOnRoom(i)) onDecide(selection.cardId, i) }
-        else -> null
-    }
-    // Only a basic room may use the "add new" entrance slot.
-    val newSlotClick: (() -> Unit)? =
-        if (buildingHere && selection != null && selectedBasicRoom && viewedPlayer.dungeon?.isFull() == false) {
-            { onDecide(selection.cardId, "new") }
+    // Tapping a slot during build/first places (or replaces / attaches) there.
+    val slotPlace: ((Int) -> Unit)? =
+        if (placingHere && selection != null) {
+            { slot -> if (canPlaceInSlot(slot)) onDecide(selection.cardId, slot) }
         } else null
-    // Boostable rooms (owner only, before any per-room boost), shown when not
-    // already targeting an ability or choosing a discard card.
+    // A room card (not an upgrade card) may instead be SPENT to upgrade an
+    // occupied room: grants its bait + a room level ("upgrade:<slot>").
+    val slotUpgrade: ((Int) -> Unit)? =
+        if (placingHere && selectedRoom != null) {
+            { slot -> onDecide(selection!!.cardId, "upgrade:$slot") }
+        } else null
+    // Ability targeting taps an ENCOUNTER (occupied-room) index, not a slot.
+    val targetingAbilityHere = pendingAbility != null && crawlOwner == viewedPlayer
+    val encounterClick: ((Int) -> Unit)? = if (targetingAbilityHere) { i -> onTargetRoom(i) } else null
+
+    // Boostable rooms (owner only, before any per-room boost) — encounter indices.
     val boostRooms: Set<Int> =
         if (preCrawl && crawlOwner == human && viewedPlayer == human && pendingAbility == null && pendingBoostRoom == null) {
             human.dungeon?.rooms?.indices?.filter {
-                RoomEffect.forEncounter(human.dungeon!!.rooms[it]).boostable() && !game.crawlMods().boosted(it)
+                RoomEffect.boostable(human.dungeon!!.rooms[it])
             }?.toSet() ?: emptySet()
         } else emptySet()
 
@@ -537,8 +567,10 @@ internal fun GameBody(
             player = viewedPlayer,
             decision = decision,
             onChooseBoss = { bossId -> onDecide(bossId, null) },
-            roomClick = roomClick,
-            newSlotClick = newSlotClick,
+            slotPlace = slotPlace,
+            canPlaceInSlot = if (placingHere && selection != null) ::canPlaceInSlot else null,
+            slotUpgrade = slotUpgrade,
+            encounterClick = encounterClick,
             boostRooms = boostRooms,
             onBoost = onChooseBoostRoom,
             onShowDetail = onShowDetail,
@@ -557,7 +589,7 @@ internal fun GameBody(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             outcome.result.participants.forEachIndexed { i, hero ->
-                HeroChip(hero.name, heroHp[i] ?: hero.health, hero.health, deadSet.contains(i))
+                HeroChip(hero.name, heroHp[i] ?: hero.maxHp, hero.maxHp, deadSet.contains(i))
             }
         }
     }
@@ -570,7 +602,7 @@ internal fun GameBody(
  * Mirrors the web app's "Crawl breakdown" section.
  */
 @Composable
-private fun CrawlBreakdownDialog(outcomes: List<CrawlPhase.Outcome>, onDismiss: () -> Unit) {
+private fun CrawlBreakdownDialog(outcomes: List<GauntletPhase.Outcome>, onDismiss: () -> Unit) {
     // Bound to the window so the table scrolls rather than clipping in landscape.
     val maxH = (LocalConfiguration.current.screenHeightDp * 0.85f).dp
     Dialog(onDismissRequest = onDismiss) {
@@ -603,7 +635,7 @@ private fun CrawlBreakdownDialog(outcomes: List<CrawlPhase.Outcome>, onDismiss: 
 
 /** One party's room-by-room breakdown table within the breakdown dialog. */
 @Composable
-private fun CrawlBreakdownBlock(outcome: CrawlPhase.Outcome) {
+private fun CrawlBreakdownBlock(outcome: GauntletPhase.Outcome) {
     val result = outcome.result
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(
@@ -655,7 +687,12 @@ private fun CrawlBreakdownBlock(outcome: CrawlPhase.Outcome) {
  * sideways when there are more than fit.
  */
 @Composable
-internal fun TownSection(game: Game, onInspect: (Hero) -> Unit, highlightHeroId: String? = null, timidGlow: Float = 1f) {
+private fun TownSection(
+    game: Game,
+    onInspect: (Hero) -> Unit,
+    highlightHeroId: String? = null,
+    timidGlow: Float = 1f
+) {
     if (game.town.isEmpty()) {
         Text("No heroes in town.", color = Palette.SubText, fontSize = 12.sp)
         return
@@ -687,7 +724,7 @@ internal fun TownSection(game: Game, onInspect: (Hero) -> Unit, highlightHeroId:
 private data class Lure(val dungeon: String?, val timid: Boolean)
 
 private fun lureTarget(game: Game, party: Party): Lure {
-    val player = BaitPhase.mostEnticingPlayer(game, party) ?: return Lure(null, false)
+    val player = EnticePhase.mostEnticingPlayer(game, party) ?: return Lure(null, false)
     val name = player.dungeon?.boss?.name ?: player.name
     return Lure(name, party.courage() < player.points)
 }
@@ -707,8 +744,7 @@ private fun TargetLine(lure: Lure?, normalColor: Color, timidGlow: Float = 1f) {
     Text(
         "🎯 ${lure.dungeon}" + if (lure.timid) " 😨 timid" else "",
         fontSize = 9.sp,
-        // The tutorial pulses [timidGlow] to make the timid marker blink; the
-        // live game leaves it at 1f (solid red).
+        // The tutorial pulses [timidGlow] to make the timid marker blink.
         color = if (lure.timid) Palette.Damage.copy(alpha = timidGlow) else normalColor,
         maxLines = 1
     )
@@ -798,37 +834,21 @@ private fun WithCount(count: Int, content: @Composable () -> Unit) {
     }
 }
 
-/** A player's effective dungeon damage (rooms + boss), or 0 if no dungeon yet. */
-internal fun playerDamage(game: Game, player: Player): Int =
-    player.dungeon?.let { EncounterDamage.dungeonTotal(it, applicablePoints(game, player)) } ?: 0
-
-/** A player's total icons of one bait type across their dungeon, or 0. */
-internal fun baitTotal(player: Player, bait: Bait): Int =
-    player.dungeon?.let { BaitCounter.enticement(it, bait) } ?: 0
-
-/**
- * "<icon> you/p2/p3/p4" — every player's [value] in seating order, you first.
- * Coloured by how you compare with the living opponents: green when you alone
- * lead, grey on a tie, red when an opponent is ahead. For lower-is-better stats
- * (wounds) pass [higherBetter] = false so fewer counts as leading.
- */
 /**
  * The per-player totals strip (bait icons, then ⚔ damage, 🪙 points, 🩸 wounds),
  * each shown as you/opponent… in seating order. Used in the Top bar and reused
  * unchanged by the tutorial so both read identically. [onClick] opens standings.
+ * The tutorial-only [highlightBait] / [highlightPoints] / [glow] ring a stat.
  */
 @Composable
 internal fun PlayerStatsStrip(
     game: Game,
     human: Player,
     onClick: (() -> Unit)? = null,
-    // Tutorial-only: ring the given bait's totals and/or the points (🪙) column
-    // (opacity tracks [glow]).
     highlightBait: Bait? = null,
     highlightPoints: Boolean = false,
     glow: Float = 1f
 ) {
-    // A pulsing ring used to spotlight a stat for the tutorial.
     fun Modifier.ring(lit: Boolean) =
         if (lit) this
             .clip(RoundedCornerShape(6.dp))
@@ -858,6 +878,20 @@ internal fun PlayerStatsStrip(
     }
 }
 
+/** A player's effective dungeon damage (rooms + boss), or 0 if no dungeon yet. */
+private fun playerDamage(game: Game, player: Player): Int =
+    player.dungeon?.let { EncounterDamage.dungeonTotal(it, applicablePoints(game, player)) } ?: 0
+
+/** A player's total icons of one bait type across their dungeon, or 0. */
+private fun baitTotal(player: Player, bait: Bait): Int =
+    player.dungeon?.let { BaitCounter.enticement(it, bait) } ?: 0
+
+/**
+ * "<icon> you/p2/p3/p4" — every player's [value] in seating order, you first.
+ * Coloured by how you compare with the living opponents: green when you alone
+ * lead, grey on a tie, red when an opponent is ahead. For lower-is-better stats
+ * (wounds) pass [higherBetter] = false so fewer counts as leading.
+ */
 @Composable
 private fun PlayerStat(
     game: Game,
@@ -953,14 +987,17 @@ internal fun DungeonBoard(
     player: Player,
     decision: Decision?,
     onChooseBoss: (String) -> Unit,
-    roomClick: ((Int) -> Unit)?,
-    newSlotClick: (() -> Unit)?,
-    boostRooms: Set<Int>,
+    slotPlace: ((Int) -> Unit)?,         // build/first: place into a SLOT (0..4)
+    canPlaceInSlot: ((Int) -> Boolean)?, // build/first: is the selected card valid for this slot?
+    slotUpgrade: ((Int) -> Unit)?,       // build: spend a room card to upgrade the SLOT's room
+    encounterClick: ((Int) -> Unit)?,    // ability targeting: tap an ENCOUNTER (occupied) index
+    boostRooms: Set<Int>,                // encounter indices
     onBoost: (Int) -> Unit,
     onShowDetail: (Any) -> Unit,
     activeIndex: Int?,
     incoming: Party? = null,
     prediction: PartyCrawlResolver.Result? = null,
+    // Tutorial-only bait spotlight, forwarded to the room/boss cards.
     baitHighlight: Set<Bait> = emptySet(),
     baitGlow: Float = 1f
 ) {
@@ -996,33 +1033,53 @@ internal fun DungeonBoard(
                 // Per-crawl ability/boost modifiers apply only to the dungeon whose
                 // party is in the pre-crawl window — fold them into its damage display.
                 val mods = if (game.nextCrawl()?.first === player) game.crawlMods() else null
-                if (newSlotClick != null) {
-                    NewRoomSlot(Modifier.clickable { newSlotClick() })
-                }
-                dungeon.rooms.forEachIndexed { i, placed ->
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        val mod = if (roomClick != null) Modifier.clickable { roomClick(i) } else Modifier
-                        RoomCardView(placed, mod, highlighted = activeIndex == i,
-                            parts = EncounterDamage.parts(dungeon, placed, points, mods, i),
-                            onInfo = { onShowDetail(placed) },
-                            baitHighlight = baitHighlight, baitGlow = baitGlow)
-                        if (boostRooms.contains(i)) {
-                            OutlinedButton(onClick = { onBoost(i) }) {
-                                Text("Boost", fontSize = 11.sp)
+                // Render all 5 slots in order; empties show as gaps (tappable while
+                // building). An occupied slot's ENCOUNTER index is its position among
+                // the occupied rooms (what the crawl/boost/damage code uses).
+                var encounterIndex = 0
+                dungeon.slots.forEachIndexed { slot, placed ->
+                    if (placed == null) {
+                        val placeable = slotPlace != null && canPlaceInSlot?.invoke(slot) == true
+                        val mod = if (placeable) Modifier.clickable { slotPlace!!(slot) } else Modifier
+                        EmptyRoomSlot(slot, active = placeable, modifier = mod)
+                    } else {
+                        val ei = encounterIndex
+                        encounterIndex += 1
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            val mod = when {
+                                slotPlace != null && canPlaceInSlot?.invoke(slot) == true ->
+                                    Modifier.clickable { slotPlace(slot) } // place/replace/attach
+                                encounterClick != null -> Modifier.clickable { encounterClick(ei) }
+                                else -> Modifier
                             }
+                            RoomCardView(placed, mod, highlighted = activeIndex == ei,
+                                parts = EncounterDamage.parts(dungeon, placed, points, mods, ei),
+                                onInfo = { onShowDetail(placed) },
+                                baitHighlight = baitHighlight, baitGlow = baitGlow)
+                            if (slotUpgrade != null) {
+                                OutlinedButton(onClick = { slotUpgrade(slot) }) {
+                                    Text("Upgrade", fontSize = 11.sp)
+                                }
+                            }
+                            if (boostRooms.contains(ei)) {
+                                OutlinedButton(onClick = { onBoost(ei) }) {
+                                    Text("Boost", fontSize = 11.sp)
+                                }
+                            }
+                            DeathMarkers(prediction, ei)
                         }
-                        DeathMarkers(prediction, i)
                     }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     // Label only opponents (P2/P3/…); your own boss needs no marker.
                     val ownerLabel = if (game.automated(player)) "P${game.players.indexOf(player) + 1}" else null
-                    BossCardView(dungeon.boss, Modifier, highlighted = activeIndex == dungeon.rooms.size,
-                        parts = EncounterDamage.parts(dungeon, dungeon.boss, points, mods, dungeon.rooms.size),
+                    val bossIndex = dungeon.rooms.size
+                    BossCardView(dungeon.boss, Modifier, highlighted = activeIndex == bossIndex,
+                        parts = EncounterDamage.parts(dungeon, dungeon.boss, points, mods, bossIndex),
                         ownerLabel = ownerLabel,
                         onInfo = { onShowDetail(dungeon.boss) },
                         baitHighlight = baitHighlight, baitGlow = baitGlow)
-                    DeathMarkers(prediction, dungeon.rooms.size)
+                    DeathMarkers(prediction, bossIndex)
                     SurvivorMarkers(prediction)
                 }
             }
@@ -1096,7 +1153,7 @@ private fun SurvivorMarkers(prediction: PartyCrawlResolver.Result?) {
 }
 
 @Composable
-private fun GameOverBanner(@Suppress("UNUSED_PARAMETER") tick: Int, game: Game, onNewGame: () -> Unit) {
+private fun GameOverBanner(@Suppress("UNUSED_PARAMETER") tick: Int, game: Game) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -1108,21 +1165,14 @@ private fun GameOverBanner(@Suppress("UNUSED_PARAMETER") tick: Int, game: Game, 
     ) {
         Text("🏆 ${game.winner?.name} wins!", fontWeight = FontWeight.Bold, fontSize = 15.sp)
         game.standings().forEach { s ->
-            val endedHere = s.player === game.endedBy
             val line = if (s.eliminated) {
                 "${s.player.name}: eliminated (5 wounds)"
             } else {
-                val bonus = if (endedHere) " + 5 end-game bonus" else ""
-                "${s.player.name}: score ${s.score} (${s.player.points} pts − ${s.player.wounds} wounds$bonus)"
+                "${s.player.name}: score ${s.score} (${s.player.points} pts − ${s.player.wounds} wounds)"
             }
             Text(line, fontSize = 12.sp, color = Palette.SubText)
         }
-        Button(
-            onClick = onNewGame,
-            colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
-        ) {
-            Text("New game", color = Color.White)
-        }
+        Text("Tap New game (bottom-right) to play again.", fontSize = 12.sp, color = Palette.SubText)
     }
 }
 
@@ -1134,6 +1184,7 @@ private fun AdvanceBar(
     onDecide: (String?, Any?) -> Unit,
     onNextTurn: () -> Unit,
     onSend: () -> Unit,
+    onNewGame: () -> Unit,
     onUndo: () -> Unit,
     onUndoBoss: () -> Unit,
     onUndoPlacement: () -> Unit,
@@ -1141,7 +1192,8 @@ private fun AdvanceBar(
     onContinueQuiet: () -> Unit,
     onCancelAbility: () -> Unit,
     pendingAbility: AbilityCard?,
-    pendingBoostRoom: Int?
+    pendingBoostRoom: Int?,
+    discardSelection: List<String> = emptyList()
 ) {
     val decision = game.currentDecision()
     val human = game.players.first { it.name == humanName }
@@ -1156,8 +1208,13 @@ private fun AdvanceBar(
         pendingAbility != null -> Triple("Tap a room to target ${pendingAbility.name}", false, noop)
         pendingBoostRoom != null -> Triple("Tap a hand card to boost the room", false, noop)
         mineKind == DecisionKind.CHOOSE_BOSS -> Triple("Tap a boss to choose it", false, noop)
-        mineKind == DecisionKind.PLACE_FIRST_ROOM -> Triple("Tap a room to place by your boss", false, noop)
-        mineKind == DecisionKind.DISCARD_ROOM -> Triple("Tap a room to discard", false, noop)
+        mineKind == DecisionKind.PLACE_FIRST_ROOM -> Triple("Tap a room, then a slot", false, noop)
+        mineKind == DecisionKind.DISCARD_ROOMS -> {
+            val n = discardSelection.size
+            val label = if (n == 0) "Discard nothing ▶" else "Discard $n ▶"
+            // 0–2 cards; confirm sends the comma-joined ids (null = discard nothing).
+            Triple(label, true, { onDecide(discardSelection.joinToString(",").ifEmpty { null }, null) })
+        }
         mineKind == DecisionKind.BUILD_ROOM -> Triple("Build nothing", true, { onDecide(null, null) })
         game.quiet() -> Triple("Continue ▶", true, onContinueQuiet)
         game.crawling() && game.nextCrawl() != null -> Triple("Send ▶", true, onSend)
@@ -1170,6 +1227,15 @@ private fun AdvanceBar(
     Surface(shadowElevation = 8.dp, color = Color.White) {
         Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), contentAlignment = Alignment.CenterEnd) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                // New game appears at the bottom-right only once the game is over.
+                if (game.over()) {
+                    Button(
+                        onClick = onNewGame,
+                        colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
+                    ) {
+                        Text("New game", color = Color.White)
+                    }
+                }
                 if (game.lastOutcomes.isNotEmpty()) {
                     // A new crawl resets the dialog so it never lingers on stale outcomes.
                     var showBreakdown by remember(game.lastOutcomes) { mutableStateOf(false) }
@@ -1237,7 +1303,7 @@ private fun shareLog(context: Context) {
 
 /** A popup showing a card's full details (opened from the ℹ button on a card). */
 @Composable
-private fun CardDetailDialog(card: Any, onDismiss: () -> Unit) {
+internal fun CardDetailDialog(card: Any, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(12.dp), color = Color.White) {
             Column(
@@ -1248,40 +1314,38 @@ private fun CardDetailDialog(card: Any, onDismiss: () -> Unit) {
                     is PlacedRoom -> {
                         DetailHeader(CardArt.roomArt(card.type), card.name,
                             if (card.baseRoom.advanced) "Advanced · ${card.type}" else card.type)
-                        DetailStat("Damage", card.damage.toString())
-                        card.upgrade?.let { DetailStat("Upgrade", it.name) }
-                        if (card.grow > 0) DetailStat("Grown", "+${card.grow}")
+                        if (card.level > 0) DetailStat("Level", card.level.toString())
                         DetailBait(card.bait)
-                        DetailBody(card.description)
+                        DetailBody(describeRoom(card))
                     }
                     is Boss -> {
                         DetailHeader(CardArt.bossArt(card.id), card.name, "Boss")
-                        DetailStat("Damage", card.damage.toString())
+                        DetailStat("Damage", card.displayDamage.toString())
                         DetailBait(card.bait)
                         DetailBody(card.abilityText)
                     }
                     is Room -> {
                         DetailHeader(CardArt.roomArt(card.type), card.name,
                             if (card.advanced) "Advanced · ${card.type}" else card.type)
-                        DetailStat("Damage", card.damage.toString())
                         DetailBait(card.bait)
-                        DetailBody(card.description)
-                    }
-                    is Upgrade -> {
-                        DetailHeader("⬆️", card.name, "Upgrade")
-                        if (card.bonusDamage > 0) DetailStat("Bonus damage", "+${card.bonusDamage}")
-                        DetailBait(card.bait)
-                        DetailBody(card.description)
+                        DetailBody(describeRoom(card))
                     }
                     is AbilityCard -> {
                         DetailHeader("✨", card.name, "Ability")
                         DetailBody(card.text)
                     }
                     is Hero -> {
-                        DetailHeader(CardArt.heroArt(card.id), card.name, "Hero")
-                        DetailStat("Health", card.health.toString())
+                        DetailHeader(card.icon.ifEmpty { CardArt.heroArt(card.id) }, card.name,
+                            if (card.level > 0) "Hero · Lv ${card.level}" else "Hero")
+                        DetailStat("HP", card.maxHp.toString())
                         DetailStat("Courage", card.courage.toString())
                         DetailStat("Preferred bait", CardArt.baitEmoji[card.preferredBait].orEmpty())
+                        if (card.partyDamageReduction > 0 || card.partyDamageReductionLevelIncrement > 0) {
+                            DetailStat("Party reduction", card.partyReduction.toString())
+                        }
+                        if (card.selfDamageMultiplier != 1.0) {
+                            DetailStat("Self damage ×", card.selfDamageMultiplier.toString())
+                        }
                         DetailBody(card.abilityText)
                     }
                 }
@@ -1345,4 +1409,50 @@ private fun encounterName(encounter: Encounter): String = when (encounter) {
     is PlacedRoom -> encounter.name
     is Boss -> encounter.name
     else -> "?"
+}
+
+/**
+ * A concise description of what a room does, built from its fields. Assumes the
+ * player knows the rules: no leveling notes, no explanation of how damage works.
+ * Shown in the card detail popup.
+ */
+private fun describeRoom(e: Encounter): String {
+    val parts = mutableListOf<String>()
+
+    if (e.leadDamage > 0) parts.add("Deals ${e.leadDamage} damage.")
+    if (e.damageAll > 0) {
+        val who = e.damageFilter?.let { " to all ${it.lowercase()}s" } ?: " to all"
+        parts.add("Deals ${e.damageAll} damage$who.")
+    }
+    if (e.damageRear > 0) parts.add("Deals ${e.damageRear} damage to weakest first.")
+    when (e.roomResist) {
+        true -> parts.add("Cannot be reduced.")
+        false -> parts.add("Cannot be halved.")
+        else -> {}
+    }
+    if (e.poisonDamage > 0) {
+        parts.add(
+            if (e.poisonPersists) "Poisons: ${e.poisonDamage} damage each later room."
+            else "Then ${e.poisonDamage} damage next room."
+        )
+    }
+    if (e.poisonTicks > 1) parts.add("Poison triggers ${e.poisonTicks}× here.")
+    if (e.growsOnDeath) parts.add("Grows on death.")
+    if (e.drawOnDeath) parts.add("Draw a room and ability card per death.")
+    if (e.discardLeadDamage > 0 || e.discardAllDamage > 0) {
+        val amt = if (e.discardAllDamage > 0) e.discardAllDamage else e.discardLeadDamage
+        parts.add("Discard a card to add $amt damage.")
+    }
+    e.roomAura?.let { aura ->
+        val amount = (aura["amount"] as? Number)?.toInt() ?: 0
+        @Suppress("UNCHECKED_CAST")
+        val matchType = ((aura["match"] as? Map<String, Any?>)?.get("type"))?.toString()?.lowercase()
+        val kind = when {
+            matchType?.contains("trap") == true -> "traps"
+            matchType?.contains("creature") == true || matchType?.contains("monster") == true -> "creatures"
+            else -> "rooms"
+        }
+        if (amount > 0) parts.add("Other $kind deal +$amount damage.")
+    }
+    return parts.joinToString(" ")
 }

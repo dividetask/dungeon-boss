@@ -50,19 +50,17 @@ import kotlinx.coroutines.delay
 
 /**
  * The non-interactive tutorial. Each step renders a real [Game] snapshot through
- * the same composables the live game uses ([GameBody] / [DungeonBoard] / the
+ * the same composables the live game uses ([GameBody] / [DungeonBoard] /
  * [PlayerStatsStrip]), so every screen looks identical to the actual game — only
  * the narration line and the Continue button are tutorial-specific. The board
- * cannot be touched; Back / Continue / Exit drive the flow. Finishing or exiting
- * returns to the screen underneath (the Load screen when launched there).
+ * cannot be touched; Back / Continue / Exit drive the flow.
+ *
+ * Rewritten for the current rules: 5 slots, the Discard→Draw→Build flow, room
+ * upgrades, the lead/all/rear damage channels, resist and poison, advanced rooms,
+ * draw-on-death and discard-to-boost, levelling heroes, and the end-game bonus.
  */
 
-/**
- * What, if anything, animates on a step to draw the eye.
- *  - CYCLE        spotlights each hero and its preferred bait in the rooms
- *  - CYCLE_TOTALS spotlights each hero and its bait in the top-right totals strip
- *  - TIMID_POINTS blinks the town's timid markers and the points (🪙) total
- */
+/** What, if anything, animates on a step to draw the eye. */
 private enum class Highlight { NONE, FLASH_ALL_BAIT, CYCLE, CYCLE_TOTALS, TIMID_POINTS }
 
 /** A party about to crawl a dungeon, with its (dry-run) predicted outcome. */
@@ -76,7 +74,9 @@ private class TutorialStep(
     val crawl: CrawlView? = null,
     val highlight: Highlight = Highlight.NONE,
     /** Heroes the spotlight cycles through (for [Highlight.CYCLE]). */
-    val cycleHeroes: List<Hero> = emptyList()
+    val cycleHeroes: List<Hero> = emptyList(),
+    /** When set, the step alternates between [game] and [altGame] every ~1.5s. */
+    val altGame: Game? = null
 )
 
 private const val HUMAN = "Player 1"
@@ -92,7 +92,10 @@ fun TutorialScreen(onExit: () -> Unit) {
     var index by remember { mutableStateOf(0) }
     val step = steps[index]
 
-    // A pulsing opacity (0..1) driving every bait glow on the board.
+    // A card whose full details are open (from tapping its ℹ), or null.
+    var detailCard by remember { mutableStateOf<Any?>(null) }
+
+    // A pulsing opacity (0..1) driving every bait glow / timid blink on the board.
     var glow by remember { mutableStateOf(1f) }
     LaunchedEffect(Unit) {
         val frames = listOf(0.2f, 0.4f, 0.65f, 0.9f, 1f, 0.9f, 0.65f, 0.4f)
@@ -104,7 +107,7 @@ fun TutorialScreen(onExit: () -> Unit) {
         }
     }
 
-    // The spotlight cycles through a step's heroes (steps 4–5).
+    // The spotlight cycles through a step's heroes.
     val cycling = step.highlight == Highlight.CYCLE || step.highlight == Highlight.CYCLE_TOTALS
     val cycleCount = step.cycleHeroes.size.coerceAtLeast(1)
     var cycle by remember(index) { mutableStateOf(0) }
@@ -117,9 +120,19 @@ fun TutorialScreen(onExit: () -> Unit) {
         }
     }
 
+    // Steps that alternate between two snapshots (e.g. lone heroes ↔ a party).
+    var alt by remember(index) { mutableStateOf(false) }
+    LaunchedEffect(index) {
+        if (step.altGame != null) {
+            while (true) {
+                delay(1500)
+                alt = !alt
+            }
+        }
+    }
+    val shownGame = if (alt && step.altGame != null) step.altGame else step.game
+
     val activeHero = if (cycling) step.cycleHeroes.getOrNull(cycle) else null
-    // CYCLE highlights the bait in the rooms; CYCLE_TOTALS highlights it in the
-    // top-right totals strip instead (rooms left alone).
     val baitHighlight: Set<Bait> = when (step.highlight) {
         Highlight.FLASH_ALL_BAIT -> Bait.entries.toSet()
         Highlight.CYCLE -> activeHero?.let { setOf(it.preferredBait) } ?: emptySet()
@@ -127,16 +140,15 @@ fun TutorialScreen(onExit: () -> Unit) {
     }
     val totalsBait: Bait? = if (step.highlight == Highlight.CYCLE_TOTALS) activeHero?.preferredBait else null
     val highlightHeroId = activeHero?.id
-    // Step 7: blink the timid markers and the points total.
     val timidBlink = step.highlight == Highlight.TIMID_POINTS
     val timidGlow = if (timidBlink) glow else 1f
-    val human = step.game.players.first { it.name == HUMAN }
+    val human = shownGame.players.first { it.name == HUMAN }
 
     Box(
         Modifier
             .fillMaxSize()
             .background(Palette.Page)
-            // Swallow taps on empty areas so nothing reaches a game underneath.
+            // Swallow taps on empty areas so nothing reaches the game underneath.
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
     ) {
         Column(
@@ -155,7 +167,7 @@ fun TutorialScreen(onExit: () -> Unit) {
                 Text("Dungeon Boss", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Text("· Tutorial ${index + 1}/${steps.size}", fontSize = 12.sp, color = Palette.SubText)
                 Spacer(Modifier.weight(1f))
-                PlayerStatsStrip(step.game, human, highlightBait = totalsBait, highlightPoints = timidBlink, glow = glow)
+                PlayerStatsStrip(shownGame, human, highlightBait = totalsBait, highlightPoints = timidBlink, glow = glow)
                 Box(
                     Modifier
                         .clip(RoundedCornerShape(6.dp))
@@ -178,18 +190,20 @@ fun TutorialScreen(onExit: () -> Unit) {
             ) {
                 val crawl = step.crawl
                 if (crawl != null) {
-                    val owner = step.game.players.first { it.name == step.viewed }
+                    val owner = shownGame.players.first { it.name == step.viewed }
                     DungeonBoard(
                         tick = 0,
-                        game = step.game,
+                        game = shownGame,
                         player = owner,
                         decision = null,
                         onChooseBoss = {},
-                        roomClick = null,
-                        newSlotClick = null,
+                        slotPlace = null,
+                        canPlaceInSlot = null,
+                        slotUpgrade = null,
+                        encounterClick = null,
                         boostRooms = emptySet(),
                         onBoost = {},
-                        onShowDetail = {},
+                        onShowDetail = { detailCard = it },
                         activeIndex = null,
                         incoming = crawl.party,
                         prediction = crawl.prediction
@@ -197,13 +211,15 @@ fun TutorialScreen(onExit: () -> Unit) {
                 } else {
                     GameBody(
                         tick = 0,
-                        game = step.game,
+                        game = shownGame,
                         humanName = HUMAN,
                         viewed = step.viewed,
                         decision = step.decision,
                         selection = null,
                         onSelect = {},
                         onDecide = { _, _ -> },
+                        discardSelection = emptyList(),
+                        onToggleDiscard = {},
                         pendingAbility = null,
                         onPickAbility = {},
                         onTargetRoom = {},
@@ -211,8 +227,7 @@ fun TutorialScreen(onExit: () -> Unit) {
                         onChooseBoostRoom = {},
                         onBoostWithCard = {},
                         onPlayBlueprints = {},
-                        onShowDetail = {},
-                        onNewGame = {},
+                        onShowDetail = { detailCard = it },
                         activeIndex = null,
                         heroHp = emptyMap(),
                         deadSet = emptyList(),
@@ -245,38 +260,42 @@ fun TutorialScreen(onExit: () -> Unit) {
                 }
             }
         }
+        // Tapping a card's ℹ opens its full details, even in the tutorial.
+        detailCard?.let { CardDetailDialog(it) { detailCard = null } }
     }
 }
 
 // ---------------------------------------------------------------------------
-// Content: 13 narrated steps over real Game snapshots. The narration is the only
-// text shown; everything else is the live game's own rendering.
+// Content: narrated steps over real Game snapshots. The narration is the only
+// tutorial text; everything else is the live game's own rendering.
 // ---------------------------------------------------------------------------
 
 private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
-    fun room(id: String): Room = lib.rooms.first { it.id == id }
+    // Rooms live in two pools (basic + advanced); look up across both.
+    val allRooms = lib.rooms + lib.advancedRooms
+    fun room(id: String): Room = allRooms.first { it.id == id }
     fun boss(id: String): Boss = lib.bosses.first { it.id == id }
     fun hero(id: String): Hero = lib.heroes.first { it.id == id }
     fun ability(id: String): AbilityCard = lib.abilityCards.first { it.id == id }
 
     fun newGame() = Game(lib, listOf("Player 1", "Player 2"))
 
-    // Build a dungeon: rooms left→right (first id is the entrance), then the boss.
+    // Build a dungeon: rooms fill slots left→right (first id is the entrance).
     fun dungeon(bossId: String, roomIds: List<String>): Dungeon {
         val d = Dungeon(boss(bossId))
-        roomIds.reversed().forEach { d.addRoomToLeft(room(it)) } // addRoomToLeft prepends
+        roomIds.forEachIndexed { slot, id -> d.placeRoom(slot, room(id)) }
         return d
     }
 
-    // A varied dungeon with one room of each bait (used across several steps).
+    // A varied dungeon touching every bait (used across several steps).
     val showcaseRooms = listOf(
-        "room_stone_ball",   // glory · 5
-        "room_golden_idol",  // riches · 3
-        "room_ghoul_pit",    // undead · 5
-        "room_will_o_wisps", // power · 5
-        "room_gladiator"     // glory · 4
+        "room_champion",  // glory · 4
+        "room_mimic",     // riches · 4
+        "room_zombies",   // undead · 4
+        "room_succubus",  // arcane · 4
+        "room_goblins"    // glory · 3
     )
-    fun showcase() = dungeon("boss_lich", showcaseRooms) // boss: undead + power
+    fun showcase() = dungeon("boss_lich", showcaseRooms) // boss_lich: undead + arcane
 
     fun lone(vararg ids: String) = ids.map { Party(listOf(hero(it))) }
 
@@ -286,127 +305,174 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
         val g = newGame()
         g.players[0].dungeon = showcase()
         g.players[0].points = points
-        g.players[1].dungeon = dungeon("boss_oni", listOf("room_goblins", "room_suspicious_treasure", "room_mana_storm"))
+        g.players[1].dungeon = dungeon("boss_oni", listOf("room_goblins", "room_skeletons", "room_fireball"))
         return g
     }
 
-    // Player 1 holds the showcase dungeon; Player 2 gets a deliberately weak one
-    // (strictly less of every bait), so town heroes are unambiguously lured to
-    // Player 1 — and thus timid — for the courage / party steps. Player 2 still
-    // needs *a* dungeon: the bait math force-unwraps every living player's.
+    // Player 1 gets the showcase; Player 2 a strictly weaker dungeon, so town
+    // heroes are unambiguously lured to Player 1 (and thus timid) for the
+    // courage / party steps.
     fun soloGame(points: Int): Game {
         val g = newGame()
-        g.players[0].dungeon = showcase() // glory 2, riches 1, undead 2, power 2
+        g.players[0].dungeon = showcase()
         g.players[0].points = points
-        g.players[1].dungeon = dungeon("boss_lich", listOf("room_goblins")) // glory 1, undead 1, power 1
+        g.players[1].dungeon = dungeon("boss_medusa", listOf("room_goblins")) // low bait, strictly weaker
         return g
     }
 
     val cycleHeroes = listOf(hero("hero_barbarian"), hero("hero_rogue"), hero("hero_cleric"), hero("hero_mage"))
+    fun handCards() = listOf(room("room_goblins"), room("room_fireball"), room("room_mimic"))
 
-    // A small representative hand for the bait-teaching steps.
-    fun handCards() = listOf(room("room_goblins"), room("room_mana_storm"), room("room_golden_idol"))
+    val steps = mutableListOf<TutorialStep>()
 
     // 1 — intro
-    val s1 = TutorialStep(
-        "In Dungeon Boss you play the villain. You have a dungeon of 5 rooms plus the boss chamber where heroes come in and try to defeat you.",
+    steps += TutorialStep(
+        "In Dungeon Boss you play the villain. You build a dungeon of up to 5 rooms plus a boss chamber, and lure wandering heroes in to their doom.",
         gameWithDungeons()
     )
 
-    // 2 — choose boss + place rooms (real CHOOSE_BOSS decision; dungeon not yet built)
+    // 2 — choose a boss
     val g2 = newGame()
-    g2.players[0].roomHand.addAll(
-        listOf(room("room_stone_ball"), room("room_goblins"), room("room_ghoul_pit"), room("room_golden_idol"))
-    )
-    val s2 = TutorialStep(
-        "The game is played by first choosing a boss from two cards, then placing rooms in one of 5 slots.",
+    g2.players[0].roomHand.addAll(listOf(room("room_champion"), room("room_goblins"), room("room_skeletons"), room("room_mimic")))
+    steps += TutorialStep(
+        "First, choose your boss. Each boss has different abilities — tap a card's ℹ to read them. Pick one; the other is discarded.",
         g2,
         decision = Decision(DecisionKind.CHOOSE_BOSS, g2.players[0], listOf(boss("boss_medusa"), boss("boss_oni")))
     )
 
-    // 3 — rooms have bait icons (all flashing)
+    // Phase 1 — Arrival
+    val gArrive = gameWithDungeons()
+    gArrive.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric"))
+    steps += TutorialStep(
+        "Phase 1: Arrival. At the start of each round a new hero arrives in town for every player still in the game.",
+        gArrive
+    )
+
+    // 3 — Discard → Draw
     val g3 = gameWithDungeons()
-    g3.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric", "hero_mage"))
     g3.players[0].roomHand.addAll(handCards())
-    val s3 = TutorialStep(
-        "Each room, including the boss room, has icons at the bottom right indicating which heroes will be attracted to them.",
-        g3, highlight = Highlight.FLASH_ALL_BAIT
+    steps += TutorialStep(
+        "Phase 2: Draw Phase. First discard any unwanted room cards (up to two), then draw one card plus one for each you discarded.",
+        g3,
+        decision = Decision(DecisionKind.DISCARD_ROOMS, g3.players[0], g3.players[0].roomHand, allowSkip = true)
     )
 
-    // 4 — each hero prefers a bait (cycle hero + its bait in the rooms)
+    // 4 — Build: place into a slot
     val g4 = gameWithDungeons()
-    g4.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric", "hero_mage"))
     g4.players[0].roomHand.addAll(handCards())
-    val s4 = TutorialStep(
-        "Each hero prefers a specific type of bait. Barbarians seek glory, Rogues seek riches, Clerics seek to destroy the undead, and Mages seek Arcane Power.",
-        g4, highlight = Highlight.CYCLE, cycleHeroes = cycleHeroes
+    steps += TutorialStep(
+        "Phase 3: Build Phase. Place a room into any of the 5 slots — an occupied slot is replaced. Heroes crawl from the left toward the boss.",
+        g4,
+        decision = Decision(DecisionKind.BUILD_ROOM, g4.players[0], g4.players[0].roomHand, allowSkip = true)
     )
 
-    // 5 — heroes go to the dungeon with the most preferred bait; totals top-right
+    // 5 — Upgrading a room
     val g5 = gameWithDungeons()
-    g5.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric", "hero_mage"))
     g5.players[0].roomHand.addAll(handCards())
-    val s5 = TutorialStep(
-        "Each hero will take turns, starting with the left most hero, crawling through a dungeon. The hero will only go to a dungeon if that dungeon has more of the hero's preferred bait than the other dungeons. If there is a tie then the hero will stay in town. At the top right of the screen we can see each player's bait totals.",
-        g5, highlight = Highlight.CYCLE_TOTALS, cycleHeroes = cycleHeroes
+    steps += TutorialStep(
+        "Instead of placing a card, you can spend it to UPGRADE a placed room: the room gains that card's bait icons and rises a level, making it hit harder. Advanced rooms upgrade it twice.",
+        g5,
+        decision = Decision(DecisionKind.BUILD_ROOM, g5.players[0], g5.players[0].roomHand, allowSkip = true)
     )
 
-    // 6 — crawl room by room; the hero dies
-    val g6 = newGame()
-    val deadly = dungeon("boss_medusa", listOf("room_stone_ball", "room_ghoul_pit", "room_will_o_wisps", "room_gladiator", "room_goblins"))
-    g6.players[0].dungeon = deadly
-    val mage = Party(listOf(hero("hero_mage")))
-    val s6 = TutorialStep(
-        "When a hero crawls a dungeon they will go through each room from left to right. Each room will deal the listed damage to the hero until that hero dies or each room is completed.",
-        g6, crawl = CrawlView(mage, PartyCrawlResolver.resolve(mage, deadly, dryRun = true))
+    // 6 — bait icons (all flashing)
+    val g6 = gameWithDungeons()
+    g6.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric", "hero_mage"))
+    steps += TutorialStep(
+        "Every room — and the boss — shows bait icons at the bottom right. Heroes are lured by the bait they crave.",
+        g6, highlight = Highlight.FLASH_ALL_BAIT
     )
 
-    // 7 — score a point per death; courage
-    val g7 = soloGame(points = 3)
+    // 7 — each hero prefers a bait (cycle)
+    val g7 = gameWithDungeons()
     g7.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric", "hero_mage"))
-    val s7 = TutorialStep(
-        "Each player scores a point for each hero that dies in their dungeon. When heroes die in a dungeon other heroes become more cautious and may avoid that dungeon depending upon their courage score. Barbarians and Clerics have a courage of 2, which means they will avoid dungeons that have 3 or more points. Rogues and Mages have a courage of 1, which means they will avoid dungeons that have 2 or more points.",
-        g7, highlight = Highlight.TIMID_POINTS
+    steps += TutorialStep(
+        "Each hero prefers one bait: Barbarians seek glory, Rogues seek riches, Clerics hunt the undead, and Mages crave arcane power.",
+        g7, highlight = Highlight.CYCLE, cycleHeroes = cycleHeroes
     )
 
-    // 8 — skipped heroes stay and form parties
-    val g8 = soloGame(points = 3)
+    // 8 — luring (totals top-right)
+    val g8 = gameWithDungeons()
     g8.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric", "hero_mage"))
-    val s8 = TutorialStep(
-        "When heroes skip a dungeon, due to low courage or when a dungeon has tied bait, they stay in town and will form a party at the end of the round. Each hero, or party, that stayed in town will try to add one new member to their party. Each will add the left most unpartied hero preferring heroes of classes they don't have.",
-        g8
+    steps += TutorialStep(
+        "Heroes take turns, left first. A hero enters the dungeon with the most of its preferred bait; on a tie it stays in town. The totals strip (top right) compares each player's bait.",
+        g8, highlight = Highlight.CYCLE_TOTALS, cycleHeroes = cycleHeroes
     )
 
-    // 9 — parties: courage = sum, bait = all members'
-    val g9 = soloGame(points = 2)
-    g9.town.add(Party(listOf(hero("hero_barbarian"), hero("hero_rogue"))))
-    g9.town.add(Party(listOf(hero("hero_cleric"), hero("hero_mage"))))
-    val s9 = TutorialStep(
-        "Parties have a courage score equal to the sum of each party member. Parties also consider all members' bait preferences. If a party has multiple heroes of the same class then that class's bait is added once for each hero.",
-        g9
+    // 9 — crawl and die
+    val deadly = dungeon("boss_medusa", listOf("room_champion", "room_zombies", "room_succubus", "adv_gladiator", "room_goblins"))
+    val g9 = newGame().also { it.players[0].dungeon = deadly }
+    val loneMage = Party(listOf(hero("hero_mage")))
+    steps += TutorialStep(
+        "A hero crawls the rooms left to right. Each room deals its damage until the hero dies or clears the boss.",
+        g9, crawl = CrawlView(loneMage, PartyCrawlResolver.resolve(loneMage, deadly, dryRun = true))
     )
 
-    // 10 — party crawl; highest-HP hero takes the hit; some die
-    val g10 = gameWithDungeons()
-    val mixedParty = Party(listOf(hero("hero_barbarian"), hero("hero_mage"), hero("hero_rogue")))
-    val s10 = TutorialStep(
-        "When a party explores a dungeon the hero with the highest HP typically takes the damage for the next room, but some rooms have special abilities that target all heroes or target specific heroes.",
-        g10, crawl = CrawlView(mixedParty, PartyCrawlResolver.resolve(mixedParty, g10.players[0].dungeon!!, dryRun = true))
+    // 10 — damage channels (lead / all / weakest)
+    val channels = dungeon("boss_lich", listOf("room_fireball", "adv_black_tentacles", "room_champion"))
+    val g10 = newGame().also { it.players[0].dungeon = channels }
+    val trio = Party(listOf(hero("hero_barbarian"), hero("hero_mage"), hero("hero_rogue")))
+    steps += TutorialStep(
+        "Most rooms hit the lead hero (the one with the most HP). But some rooms hit ALL heroes, and others strike the weakest hero first — read each room's card for what it does.",
+        g10, crawl = CrawlView(trio, PartyCrawlResolver.resolve(trio, channels, dryRun = true))
     )
 
-    // 11 — hero special abilities reduce damage (here, to nothing)
-    val g11 = newGame()
-    val warded = dungeon("boss_lich", listOf("room_zombies", "room_mana_storm", "plague_zombie"))
-    g11.players[0].dungeon = warded
+    // 11 — points + courage (timid blink)
+    val g11 = soloGame(points = 3)
+    g11.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric", "hero_mage"))
+    steps += TutorialStep(
+        "You score a point per hero that dies in your dungeon. As your points rise, heroes grow cautious: a hero (or party) enters only if its courage is at least your point total, otherwise it stays away.",
+        g11, highlight = Highlight.TIMID_POINTS
+    )
+
+    // 12 — stay and form parties (alternates two lone heroes <-> them as a party)
+    val g12a = soloGame(points = 3)
+    g12a.town.addAll(lone("hero_barbarian", "hero_rogue"))
+    val g12b = soloGame(points = 3)
+    g12b.town.add(Party(listOf(hero("hero_barbarian"), hero("hero_rogue"))))
+    steps += TutorialStep(
+        "Heroes that skip a dungeon stay in town and, at the end of the round, band together into a party.",
+        g12a, altGame = g12b
+    )
+
+    // 13 — party crawl + overkill
+    val g13 = gameWithDungeons()
+    val party = Party(listOf(hero("hero_barbarian"), hero("hero_mage"), hero("hero_rogue")))
+    steps += TutorialStep(
+        "A party crawls together. A lead hit strikes the highest-HP member, and any leftover (overkill) spills to the next — a party's combined courage and bait are the sum of its members.",
+        g13, crawl = CrawlView(party, PartyCrawlResolver.resolve(party, g13.players[0].dungeon!!, dryRun = true))
+    )
+
+    // 14 — hero abilities
+    val warded = dungeon("boss_lich", listOf("room_zombies", "room_fireball", "room_succubus"))
+    val g14 = newGame().also { it.players[0].dungeon = warded }
     val clericMage = Party(listOf(hero("hero_cleric"), hero("hero_mage")))
-    val s11 = TutorialStep(
-        "Each hero has a special ability. A Barbarian reduces all damage that they take by half. Rogues reduce all damage the party takes from trap rooms by 2. Clerics reduce all damage rooms with the undead bait icon deal by 4. Mages reduce all damage rooms with the arcane bait icon by 4.",
-        g11, crawl = CrawlView(clericMage, PartyCrawlResolver.resolve(clericMage, warded, dryRun = true))
+    steps += TutorialStep(
+        "Each hero has a defence: a Barbarian halves the damage he takes, a Rogue cuts trap damage by 2 for the party, a Cleric cuts undead damage by 4, and a Mage cuts arcane damage by 4. These grow as heroes level up.",
+        g14, crawl = CrawlView(clericMage, PartyCrawlResolver.resolve(clericMage, warded, dryRun = true))
     )
 
-    // 12 — ability cards (shown in hand)
-    val g12 = gameWithDungeons()
-    g12.players[0].abilityHand.addAll(
+    // 15 — resist and poison
+    val nasty = dungeon("boss_medusa", listOf("adv_gladiator", "room_floor_spike", "adv_cursed_ring"))
+    val g15 = newGame().also { it.players[0].dungeon = nasty }
+    val tough = Party(listOf(hero("hero_barbarian"), hero("hero_cleric")))
+    steps += TutorialStep(
+        "Some rooms bypass those defences: their damage cannot be reduced, or cannot be halved. Others poison a hero, dealing extra damage in later rooms. Tap a room's ℹ to read exactly what it does.",
+        g15, crawl = CrawlView(tough, PartyCrawlResolver.resolve(tough, nasty, dryRun = true))
+    )
+
+    // 16 — advanced rooms, draw-on-death, discard-to-boost
+    val g16 = newGame()
+    g16.players[0].dungeon = dungeon("boss_necromancer", listOf("room_sacrifice_pit", "adv_troll", "room_power_word"))
+    g16.players[0].roomHand.addAll(listOf(room("room_goblins"), room("room_mimic")))
+    steps += TutorialStep(
+        "Advanced rooms are powerful; they replace a room that shares a bait icon. Some rooms let you draw cards when a hero dies in them, and a few let you discard a card mid-crawl to boost their damage for that crawl.",
+        g16
+    )
+
+    // 17 — ability cards
+    val g17 = gameWithDungeons()
+    g17.players[0].abilityHand.addAll(
         listOf(
             ability("ability_return_to_town"),
             ability("ability_extra_damage"),
@@ -415,16 +481,16 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
             ability("ability_draw_rooms")
         )
     )
-    val s12 = TutorialStep(
-        "Each player has a number of ability cards that they can play. These cards may make a party flee, increase the damage they take, or prevent a room from damaging them. There is also another card that draws additional room cards. Players start with two ability cards and gain another card each round that no one attacks them.",
-        g12
+    steps += TutorialStep(
+        "You also hold ability cards, played before a crawl: make a party flee, add or negate a room's damage, expose a room so it can't be reduced, or draw extra rooms. You start with two and gain one each round no hero attacks you.",
+        g17
     )
 
-    // 13 — wounds and the win condition
-    val s13 = TutorialStep(
-        "Whenever a hero survives all of the rooms of a dungeon that player gains a wound. If they gain 5 wounds they lose. Whenever a player gains 10 points then the game ends. Whoever ends the game gains 5 points. After the game ends each player loses 2 points per wound, and whoever ends up with the most points wins.",
+    // 18 — wounds and winning
+    steps += TutorialStep(
+        "If a hero survives your whole dungeon you take a wound; 5 wounds knocks you out. The game ends when someone reaches 10 points — the player who ends it gains 5 bonus points. Final score is points minus 2 per wound; highest wins.",
         gameWithDungeons(points = 8)
     )
 
-    return listOf(s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13)
+    return steps
 }

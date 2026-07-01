@@ -5,7 +5,7 @@ require "json"
 require_relative "lib/card_library"
 require_relative "lib/game"
 require_relative "lib/crawl_log"
-require_relative "lib/logic_agent"
+require_relative "lib/random_agent"
 require_relative "lib/card_presenter"
 require_relative "lib/dungeon_summary"
 require_relative "lib/boss_effect"
@@ -20,7 +20,6 @@ require_relative "lib/ability_effect"
 # place). One in-memory game is kept per server process.
 class DungeonBossApp < Sinatra::Base
   CARDS_PATH = File.expand_path("../data/cards", __dir__)
-  AI_LOGIC_PATH = File.expand_path("../data/ai_logic.yaml", __dir__)
   LOG_PATH = File.expand_path("log/crawl.log", __dir__)
   HUMAN_PLAYER = "Player 1"
   MIN_PLAYERS = 2
@@ -113,12 +112,11 @@ class DungeonBossApp < Sinatra::Base
 
   post "/new" do
     library = CardLibrary.load(CARDS_PATH)
-    # Player 1 is you; Players 2..N (up to MAX_PLAYERS) are computer opponents
-    # driven by the heuristics in data/ai_logic.yaml. The hero count per turn
-    # equals the number of players.
+    # Player 1 is you; Players 2..N (up to MAX_PLAYERS) are random computer
+    # opponents. The hero count per turn equals the number of players.
     count = (params["players"] || DEFAULT_PLAYERS).to_i.clamp(MIN_PLAYERS, MAX_PLAYERS)
     names = (1..count).map { |i| "Player #{i}" }
-    agents = names.drop(1).to_h { |name| [name, LogicAgent.load(AI_LOGIC_PATH)] }
+    agents = names.drop(1).to_h { |name| [name, RandomAgent.new] }
     settings.game = Game.new(library, names, agents: agents, log: CrawlLog.new(LOG_PATH)).start
     redirect "/"
   end

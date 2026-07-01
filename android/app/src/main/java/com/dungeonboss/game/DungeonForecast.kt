@@ -4,10 +4,10 @@ package com.dungeonboss.game
  * Forecasts how a set of parties would fare crawling a dungeon, without touching
  * the real game. Used by [LogicAgent] to score a candidate placement: how many
  * heroes it would kill (points), how many parties would survive (wounds), and how
- * much damage it would deal. Mirrors `webapp/lib/dungeon_forecast.rb`.
+ * much damage it would deal.
  *
- * Each crawl runs as a `dryRun`, so grow-on-death rooms are not permanently grown
- * and the same dungeon can be forecast repeatedly with no lasting effect.
+ * Each crawl runs as a `dryRun`, so grow-on-death rooms are not permanently
+ * levelled and the same dungeon can be forecast repeatedly with no lasting effect.
  */
 object DungeonForecast {
     /**
@@ -37,17 +37,13 @@ object DungeonForecast {
     }
 
     /**
-     * A copy of the dungeon with the same boss and rooms (in order), preserving
-     * each slot's upgrade and permanent grow bonus. Used to apply a candidate
-     * build move without disturbing the real dungeon.
+     * A deep copy of the dungeon (same boss, each occupied slot's room preserving
+     * its level and granted bait), so a candidate build move can be applied to the
+     * copy without disturbing the real dungeon.
      */
     fun clone(dungeon: Dungeon): Dungeon {
         val copy = Dungeon(dungeon.boss)
-        dungeon.rooms.asReversed().forEach { copy.addRoomToLeft(it.baseRoom) }
-        dungeon.rooms.forEachIndexed { index, placed ->
-            copy.rooms[index].upgrade = placed.upgrade
-            copy.rooms[index].grow = placed.grow
-        }
+        copy.restoreSlots(dungeon.snapshotSlots())
         return copy
     }
 }

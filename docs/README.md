@@ -8,10 +8,11 @@ described here. When a rule changes, change it here first.
 
 - **[game-overview.md](game-overview.md)** — What the game is, its components,
   and how a player wins.
-- **[phases.md](phases.md)** — The turn structure: Setup, Arrival, Build, Bait,
-  Crawl, and Recruitment phases, with the exact resolution rules.
-- **[cards.md](cards.md)** — Card types (boss, room, upgrade, advanced room,
-  hero, ability), their fields, **tags**, the bait system, and the
+- **[phases.md](phases.md)** — The turn structure: Setup, then Arrival, Discard,
+  Draw, Build, Crawl (Entice → Ability → Gauntlet), and Recharge, with the exact
+  resolution rules.
+- **[cards.md](cards.md)** — Card types (boss, room, advanced room, hero,
+  ability), the **flat room field schema**, **tags**, the bait system, and the
   `data/cards/` schema (one file per category).
 - **[architecture.md](architecture.md)** — The canonical list of classes and
   their single responsibilities, plus a **client-parity** table tracking what
@@ -20,37 +21,49 @@ described here. When a rule changes, change it here first.
   class's behaviour (the implementation companion to architecture.md).
 - **[screens.md](screens.md)** — Each screen/state of the UI, with layouts and
   the controls available in each.
-- **[ai.md](ai.md)** — How the computer opponent (`LogicAgent`) decides, and the
-  declarative heuristics file (`data/ai_logic.yaml`) that tunes it without code.
+- **[ai.md](ai.md)** — The computer opponent (`LogicAgent`): its data-driven
+  heuristics file and the comparator vocabulary.
 
 ## Scope
 
 The game is currently resolved using:
 
-- **Damage and health** — rooms and bosses deal damage; bosses deal **+1 per
-  point** they have; heroes have health and die at 0.
+- **Damage and HP** — rooms and bosses deal damage; bosses deal **+1 per point**
+  they have; heroes have HP and die at ≤ 0.
 - **Bait and preferred bait** — parties are lured to the most enticing dungeon.
 - **Courage and parties** — heroes move as parties; timid/unenticed parties
-  **wait** and are consolidated in **Recruitment**.
-- **Hero abilities** — damage modifiers applied during the crawl (keyed by id).
-- **Advanced rooms and upgrades** — `effect`-driven room behaviour; upgrades
-  attach to rooms.
+  **wait** and are consolidated in **Recharge**.
+- **Data-driven levelling heroes** — HP, courage, and a party damage reduction
+  scale with each hero's **level** (gained by surviving crawls); a self-damage
+  multiplier protects the hero itself. All read from the hero YAML — no per-id code.
+- **5-slot dungeon + room-card upgrades** — rooms occupy any of 5 slots; spending
+  a room card upgrades a placed room (grants bait + a room **level** that scales
+  the room's damage channels by its increments).
+- **Advanced rooms** — drawn from the build deck (seeded into the discard pile so
+  they can't be in an opening hand); placed by replacing a bait-sharing room.
+- **Flat room schema** — lead/all/rear damage with per-level increments, a
+  three-way resist, a class damage filter, and unified poison. No Upgrade cards.
 - **Boss effects** — `effect`-driven boss behaviour (e.g. Goblin Chieftain).
-- **Ability cards** — played before a crawl to alter it.
+- **Ability cards** — drawn in Recharge by un-attacked players and played during
+  the crawl's Ability step to alter it.
 - **Tags** — classify cards so effects can target groups (e.g. `goblin`).
 
-**Still flavor-only:** the free-text `ability_text` fields on bosses/rooms/heroes
-(the mechanical behaviour lives in structured `effect` keys / hero ids instead).
+**Documented but not built:** the **Ability** priority loop (play/pass) is a
+**TODO**; the existing pre-Gauntlet ability interaction stands in for now.
 
-> **Reference vs Android.** The **web app is the reference implementation**; it
-> implements everything above and is unit-tested. The Android client is at an
-> earlier rules baseline — see the parity table in
+**Still flavor-only:** the free-text `ability_text` fields on bosses/rooms/heroes
+(the mechanical behaviour lives in structured `effect` keys / hero fields instead).
+
+> **Reference vs Android.** This rules overhaul updates the spec, `data/cards/`,
+> and the **Android** client; the **web app is intentionally not being updated**.
+> See the parity table in
 > [architecture.md](architecture.md#client-parity-reference-vs-android).
 
 ## Conventions
 
-- Bait types are exactly: **glory**, **riches**, **undead**, **power**.
-- Dungeon layout: rooms extend **leftward**, the **boss** is on the right, and a
-  hero **enters from the left** crawling toward the boss.
+- Bait types are exactly: **glory**, **riches**, **undead**, **arcane**.
+- Dungeon layout: **5 ordered room slots** (some may be empty) with the **boss**
+  on the right; a hero **enters from the left** crawling (skipping empties) toward
+  the boss.
 - Any place where the original design was ambiguous, the resolved choice is
   marked **(interpretation)** so it is easy to find and revisit.

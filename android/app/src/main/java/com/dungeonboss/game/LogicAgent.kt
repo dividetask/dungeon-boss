@@ -2,11 +2,9 @@ package com.dungeonboss.game
 
 import com.dungeonboss.model.Bait
 import com.dungeonboss.model.BaitIcons
-import com.dungeonboss.model.BuildCard
 import com.dungeonboss.model.Card
 import com.dungeonboss.model.Encounter
 import com.dungeonboss.model.Room
-import com.dungeonboss.model.Upgrade
 import org.yaml.snakeyaml.Yaml
 import java.io.InputStream
 import kotlin.math.roundToInt
@@ -17,7 +15,6 @@ import kotlin.random.Random
  * Like [RandomAgent] it answers a [Decision] with a (choiceId, target) pair, but
  * instead of picking at random it scores the candidates with the tie-break chain
  * configured for that decision (see the file and docs/ai.md for the vocabulary).
- * Mirrors `webapp/lib/logic_agent.rb`.
  *
  * The agent is the interpreter; the YAML is the logic. To weigh a placement by
  * how it would actually play out, the agent needs to know who is in town, so the
@@ -64,41 +61,39 @@ class LogicAgent(
 
     private fun candidatesFor(decision: Decision): List<Candidate> = when (decision.kind) {
         DecisionKind.BUILD_ROOM -> buildMoves(decision)
-        DecisionKind.DISCARD_ROOM -> decision.player.roomHand.map { Candidate(it.id, null, it, null) }
+        DecisionKind.DISCARD_ROOMS -> decision.player.roomHand.map { Candidate(it.id, null, it, null) }
         else -> decision.options.map { Candidate(it.id, null, it, null) }
     }
 
     /**
      * Every legal build move (mirrors BuildPhase.place), each paired with the
-     * dungeon it would produce, plus the option to build nothing.
+     * dungeon it would produce, plus the option to build nothing. A room card may
+     * be placed into a slot (empty fills, occupied replaces — advanced rooms only
+     * into an empty slot or a bait-sharing one) or spent to upgrade a placed room.
      */
     private fun buildMoves(decision: Decision): List<Candidate> {
         val dungeon = decision.player.dungeon ?: return listOf(Candidate(null, null, null, null))
-        val moves = mutableListOf(Candidate(null, null, null, dungeon)) // build nothing: dungeon unchanged
+        val slots = dungeon.slots
+        val occupied = slots.indices.filter { slots[it] != null }
+        val moves = mutableListOf(Candidate(null, null, null, DungeonForecast.clone(dungeon))) // build nothing
 
         for (card in decision.player.roomHand) {
-            when {
-                card is Upgrade ->
-                    dungeon.rooms.indices.forEach { i ->
-                        moves.add(move(card, i, dungeon) { it.applyUpgrade(i, card) })
-                    }
-                card is Room && card.advanced ->
-                    dungeon.rooms.indices
-                        .filter { dungeon.rooms[it].bait.shares(card.bait) }
-                        .forEach { i -> moves.add(move(card, i, dungeon) { it.replaceRoom(i, card) }) }
-                card is Room -> {
-                    if (!dungeon.isFull()) moves.add(move(card, "new", dungeon) { it.addRoomToLeft(card) })
-                    dungeon.rooms.indices.forEach { i ->
-                        moves.add(move(card, i, dungeon) { it.replaceRoom(i, card) })
-                    }
-                }
+            if (card !is Room) continue
+            // Spend the card to upgrade any placed room (grants its bait + a level).
+            occupied.forEach { i -> moves.add(move(card, "upgrade:$i", dungeon) { it.upgradeRoomWith(i, card) }) }
+            // Or place it into a slot.
+            val placeSlots = if (card.advanced) {
+                dungeon.emptySlots() + occupied.filter { slots[it]!!.bait.shares(card.bait) }
+            } else {
+                slots.indices.toList()
             }
+            placeSlots.forEach { i -> moves.add(move(card, i, dungeon) { it.placeRoom(i, card) }) }
         }
         return moves
     }
 
     /** Build a candidate from a move: clone the dungeon, apply the change to the clone. */
-    private fun move(card: BuildCard, target: Any?, dungeon: Dungeon, apply: (Dungeon) -> Unit): Candidate {
+    private fun move(card: Room, target: Any?, dungeon: Dungeon, apply: (Dungeon) -> Unit): Candidate {
         val candidateDungeon = DungeonForecast.clone(dungeon)
         apply(candidateDungeon)
         return Candidate(card.id, target, card, candidateDungeon)
@@ -153,15 +148,14 @@ class LogicAgent(
     /** The parties currently in town, or none if the agent has no game attached. */
     private fun town(): List<Party> = game?.town ?: emptyList()
 
+    /** A card's headline damage — its primary channel (lead, else all, else rear). */
     private fun cardDamage(card: Card?): Int = when (card) {
-        is Upgrade -> card.bonusDamage
-        is Encounter -> card.damage // Boss / Room
+        is Encounter -> card.displayDamage // Boss / Room
         else -> 0
     }
 
     private fun cardBait(card: Card?): BaitIcons = when (card) {
         is Encounter -> card.bait // Boss / Room
-        is Upgrade -> card.bait
         else -> BaitIcons()
     }
 

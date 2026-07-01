@@ -27,20 +27,26 @@ they cannot share source code. They share the **`docs/` specification** and the
 ### Versioning of scope
 
 - **Current scope:** Resolve the game using damage, health, bait icons,
-  preferred bait, **hero special abilities** (damage modifiers during the
-  crawl), and **courage / parties** (afraid heroes band together; see
-  [docs/phases.md](docs/phases.md)).
-- **Still ignored:** **ability cards**, and **boss/room ability text**.
-- Later versions will introduce ability-card play and boss/room abilities.
+  preferred bait, **data-driven levelling heroes** (HP / courage / party
+  reduction scale with a per-hero level; damage modifiers during the crawl),
+  and **courage / parties** (afraid heroes band together). The turn runs
+  **Arrival → Discard → Draw → Build → Crawl (Entice → Ability → Gauntlet) →
+  Recharge** over a **5-slot dungeon** (see [docs/phases.md](docs/phases.md)).
+- **Documented but not yet built:** the **Ability** priority loop (turn-based
+  play/pass) is specced as a **TODO**; the existing pre-Gauntlet ability/boost
+  interaction stands in for now. The **gameplay effect of a room's level** (from
+  room-card upgrades) is being implemented on a separate branch.
+- **Still ignored:** **boss/room ability *text*** beyond the declarative
+  `effect` data already supported.
 
 ## Critical Rules
 
 ### Distinct classes with minimal responsibility
 
 - Model every concept as its own small class with a single clear job.
-- Phases are classes too (`SetupPhase`, `ArrivalPhase`, `BuildPhase`,
-  `BaitPhase`, `CrawlPhase`). A phase orchestrates a step of the turn and
-  nothing else.
+- Phases are classes too (`SetupPhase`, `ArrivalPhase`, `DiscardPhase`,
+  `DrawPhase`, `BuildPhase`, `EnticePhase`, `AbilityPhase`, `GauntletPhase`,
+  `RechargePhase`). A phase orchestrates a step of the turn and nothing else.
 - Keep data holders (cards) free of game-flow logic. Keep game-flow logic
   (phases, resolvers) free of data definitions.
 - See [docs/architecture.md](docs/architecture.md) for the canonical class
@@ -72,10 +78,11 @@ they cannot share source code. They share the **`docs/` specification** and the
 ### Design document conventions
 
 - The canonical bait types are exactly: **glory**, **riches**, **undead**,
-  **power**. Use these names verbatim.
-- Dungeon layout language: rooms are placed **to the left**; the **boss** sits
-  on the right. A hero **enters from the left** and crawls rightward toward the
-  boss. The **leftmost room is the entrance**.
+  **arcane**. Use these names verbatim.
+- Dungeon layout language: a dungeon has **5 ordered room slots** (some may be
+  empty) with the **boss** on the right. A hero **enters from the left** and
+  crawls rightward (skipping empty slots) toward the boss. The **leftmost slot
+  (slot 0) is the entrance**.
 - Cross-reference between documents using relative markdown links:
   `[phases.md](docs/phases.md)`.
 - Where a rule is ambiguous in the source design, the chosen interpretation is

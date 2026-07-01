@@ -1,6 +1,6 @@
 # Dungeon Boss card definitions. Loaded with the other files in this
 # directory by every client. See docs/cards.md for the schema.
-# Bait types are exactly: glory, riches, undead, power.
+# Bait types are exactly: glory, riches, undead, arcane.
 
 ability_cards:
   - id: ability_extra_damage

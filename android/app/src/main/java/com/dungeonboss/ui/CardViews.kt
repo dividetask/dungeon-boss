@@ -33,7 +33,6 @@ import com.dungeonboss.model.BuildCard
 import com.dungeonboss.model.Hero
 import com.dungeonboss.model.PlacedRoom
 import com.dungeonboss.model.Room
-import com.dungeonboss.model.Upgrade
 
 private val CARD_WIDTH = 116.dp
 private val CARD_HEIGHT = 76.dp
@@ -230,8 +229,8 @@ fun BossCardView(
         CardFrame(Palette.BossBg, Palette.BossBorder, modifier, highlighted) {
             CardHeader(CardArt.bossArt(boss.id), boss.name + (ownerLabel?.let { " ($it)" } ?: ""))
             StatRow(
-                { Damage(parts?.sum() ?: boss.damage) },
-                { BaitWithMarkers(boss.bait, hasEffect = boss.effect.isNotEmpty(), upgraded = false, baitHighlight = baitHighlight, baitGlow = baitGlow) }
+                { Damage(parts?.sum() ?: boss.displayDamage) },
+                { BaitWithMarkers(boss.bait, hasEffect = boss.hasSpecial, upgraded = false, baitHighlight = baitHighlight, baitGlow = baitGlow) }
             )
             DamageBreakdown(parts)
         }
@@ -257,15 +256,15 @@ fun RoomCardView(
         ) {
             CardHeader(CardArt.roomArt(placed.type), placed.name)
             StatRow(
-                { Damage(parts?.sum() ?: placed.damage) },
-                { BaitWithMarkers(placed.bait, hasEffect = placed.effect.isNotEmpty(), upgraded = placed.upgrade != null, baitHighlight = baitHighlight, baitGlow = baitGlow) }
+                { Damage(parts?.sum() ?: placed.displayDamage) },
+                { BaitWithMarkers(placed.bait, hasEffect = placed.hasSpecial, upgraded = placed.level > 0, baitHighlight = baitHighlight, baitGlow = baitGlow) }
             )
             DamageBreakdown(parts)
         }
     }
 }
 
-/** A hand card: a base [Room] or an [Upgrade]. */
+/** A hand card: a base or advanced [Room]. */
 @Composable
 fun HandCardView(
     card: BuildCard,
@@ -282,21 +281,8 @@ fun HandCardView(
             ) {
                 CardHeader(CardArt.roomArt(card.type), card.name)
                 StatRow(
-                    { Damage(card.damage) },
-                    { BaitWithMarkers(card.bait, hasEffect = card.effect.isNotEmpty(), upgraded = false) }
-                )
-            }
-            is Upgrade -> CardFrame(Palette.UpgradeBg, Palette.UpgradeBorder, modifier, highlighted) {
-                CardHeader("⬆️", card.name)
-                StatRow(
-                    {
-                        if (card.bonusDamage > 0) {
-                            Text("+${card.bonusDamage} ⚔", color = Palette.Damage, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        } else {
-                            Text("")
-                        }
-                    },
-                    { BaitPips(card.bait) }
+                    { Damage(card.displayDamage) },
+                    { BaitWithMarkers(card.bait, hasEffect = card.hasSpecial, upgraded = false) }
                 )
             }
         }
@@ -304,13 +290,13 @@ fun HandCardView(
 }
 
 @Composable
-fun HeroCardView(hero: Hero, modifier: Modifier = Modifier, highlighted: Boolean = false) {
-    CardFrame(Palette.HeroBg, Palette.HeroBorder, modifier, highlighted) {
-        CardArtGlyph(CardArt.heroArt(hero.id))
+fun HeroCardView(hero: Hero, modifier: Modifier = Modifier) {
+    CardFrame(Palette.HeroBg, Palette.HeroBorder, modifier) {
+        CardArtGlyph(hero.icon.ifEmpty { CardArt.heroArt(hero.id) })
         CardTitle(hero.name)
-        CardType("Hero")
+        CardType(if (hero.level > 0) "Hero · Lv ${hero.level}" else "Hero")
         StatRow(
-            { Text("❤ ${hero.health}", color = Palette.Health, fontWeight = FontWeight.Bold, fontSize = 13.sp) },
+            { Text("❤ ${hero.maxHp}", color = Palette.Health, fontWeight = FontWeight.Bold, fontSize = 13.sp) },
             {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("🦁 ${hero.courage}", fontSize = 12.sp)
@@ -359,6 +345,30 @@ fun NewRoomSlot(modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center
     ) {
         Text("+ new room", color = Palette.PartyHead, fontSize = 11.sp)
+    }
+}
+
+/**
+ * One of the dungeon's 5 slots when it is empty. [active] (a room is selected to
+ * place) draws it as a tappable "+ place here" target; otherwise a faint gap.
+ */
+@Composable
+fun EmptyRoomSlot(slot: Int, active: Boolean, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .width(if (active) CARD_WIDTH else CARD_WIDTH / 2)
+            .height(CARD_HEIGHT)
+            .clip(CARD_SHAPE)
+            .background(if (active) Palette.NewSlotBg else Color.Transparent)
+            .border(2.dp, if (active) Palette.NewSlotBorder else Palette.HeroBorder, CARD_SHAPE)
+            .padding(6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            if (active) "+ slot ${slot + 1}" else "·",
+            color = Palette.PartyHead,
+            fontSize = if (active) 11.sp else 14.sp
+        )
     }
 }
 

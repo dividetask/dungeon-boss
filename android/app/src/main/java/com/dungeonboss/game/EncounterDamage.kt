@@ -1,24 +1,24 @@
 package com.dungeonboss.game
 
 import com.dungeonboss.model.Encounter
-import com.dungeonboss.model.PlacedRoom
 
 /**
  * Effective crawl damage for an encounter, broken into components for display:
- * base first, then each positive bonus (upgrade, grow, room auras + boss
- * per-point bonus). The sum is what the encounter actually deals (before any
- * per-crawl ability/boost modifiers). Mirrors the web app's `damage_parts`.
+ * the room's primary channel (lead, else all, else rear) at its current level
+ * first, then each positive bonus (room auras + boss per-point bonus), then any
+ * per-crawl ability/boost modifier. The sum is what the encounter's primary hit
+ * actually deals this crawl. Matches the resolver's channel folding.
  */
 object EncounterDamage {
 
-    /**
-     * [base, +bonus, …] — only positive bonuses are included. When [mods] and a
-     * non-negative encounter [index] are supplied (the dungeon currently in the
-     * pre-crawl window), the per-crawl ability/boost modifiers are folded in so a
-     * room shows the damage it will actually deal this crawl: an override or zero
-     * replaces the printed base, and any added damage (Reinforcements / discard
-     * boost) appears as a final bonus. Matches the resolver's `effectiveBase`.
-     */
+    /** The room's primary (used) damage channel at its current level. */
+    private fun primaryBase(encounter: Encounter): Int = when {
+        encounter.leadDamage > 0 -> encounter.leadDamage
+        encounter.damageAll > 0 -> encounter.damageAll
+        encounter.damageRear > 0 -> encounter.damageRear
+        else -> encounter.leadDamage
+    }
+
     fun parts(
         dungeon: Dungeon,
         encounter: Encounter,
@@ -31,26 +31,18 @@ object EncounterDamage {
 
         val bossEffect = BossEffect.forBoss(dungeon.boss)
         return if (encounter === dungeon.boss) {
-            val intrinsic = if (modded && mods!!.isSet(index)) mods.setValue(index) else encounter.damage
+            val intrinsic = if (modded && mods!!.isSet(index)) mods.setValue(index) else encounter.leadDamage
             val out = mutableListOf(intrinsic)
             val self = bossEffect.selfBonus(points)
             if (self > 0) out.add(self)
             if (modded) mods!!.bonus(index).let { if (it > 0) out.add(it) }
             out
         } else {
-            val placed = encounter as PlacedRoom
             val out = mutableListOf<Int>()
-            if (modded && mods!!.isSet(index)) {
-                // A discard-boost override replaces base + upgrade + grow entirely.
-                out.add(mods.setValue(index))
-            } else {
-                out.add(placed.baseRoom.damage)
-                placed.upgrade?.bonusDamage?.let { if (it > 0) out.add(it) }
-                if (placed.grow > 0) out.add(placed.grow)
-            }
+            if (modded && mods!!.isSet(index)) out.add(mods.setValue(index)) else out.add(primaryBase(encounter))
             val aura = bossEffect.roomBonus(encounter, points) +
                 dungeon.rooms.sumOf { r ->
-                    if (r === encounter) 0 else RoomEffect.forEncounter(r).auraBonus(encounter, points)
+                    if (r === encounter) 0 else RoomEffect.auraBonus(r, encounter, points)
                 }
             if (aura > 0) out.add(aura)
             if (modded) mods!!.bonus(index).let { if (it > 0) out.add(it) }

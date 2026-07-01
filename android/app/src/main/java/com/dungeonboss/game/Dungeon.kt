@@ -4,60 +4,67 @@ import com.dungeonboss.model.Boss
 import com.dungeonboss.model.Encounter
 import com.dungeonboss.model.PlacedRoom
 import com.dungeonboss.model.Room
-import com.dungeonboss.model.Upgrade
 
 /**
- * One player's dungeon: a boss plus an ordered list of rooms. The entrance is
- * the leftmost room; the boss sits on the right. Rooms are added to the left, so
- * the dungeon grows toward the entrance. Holds at most [MAX_ROOMS] rooms.
+ * One player's dungeon: a boss plus [SLOTS] ordered room slots, any of which may
+ * be empty. The entrance is the leftmost slot (index 0); the boss sits on the
+ * right. A room may be placed into any slot (an empty slot is filled, an occupied
+ * slot is replaced). The crawl runs through the occupied rooms left -> right
+ * (skipping empties), then the boss. Mirrors `webapp/lib/dungeon.rb`.
  */
 class Dungeon(val boss: Boss) {
-    private val _rooms = mutableListOf<PlacedRoom>() // index 0 is the leftmost (entrance) room
-    val rooms: List<PlacedRoom> get() = _rooms
+    // null = an empty slot; index 0 is the leftmost (entrance) slot.
+    private val _slots = arrayOfNulls<PlacedRoom>(SLOTS)
 
-    fun isFull(): Boolean = _rooms.size >= MAX_ROOMS
+    /** All 5 slots in order, empties as null (for the build UI). */
+    val slots: List<PlacedRoom?> get() = _slots.toList()
 
-    /** Place a room to the left of the current leftmost room (new entrance). */
-    fun addRoomToLeft(room: Room): Dungeon {
-        check(!isFull()) { "dungeon is full (max $MAX_ROOMS rooms)" }
-        _rooms.add(0, PlacedRoom(room))
-        return this
-    }
+    /** Occupied rooms in slot order (left -> right), skipping empties. */
+    val rooms: List<PlacedRoom> get() = _slots.filterNotNull()
+
+    /** True when every slot is occupied (a new room can then only replace one). */
+    fun isFull(): Boolean = _slots.all { it != null }
+
+    /** Indices of the currently empty slots. */
+    fun emptySlots(): List<Int> = _slots.indices.filter { _slots[it] == null }
 
     /**
-     * Replace the room at the given index, returning the old [PlacedRoom] (so the
-     * caller can discard it; any upgrade on it is lost).
+     * Place a room into the given slot. An empty slot is filled; an occupied slot
+     * is replaced, returning the old [PlacedRoom] (so the caller can discard it;
+     * any upgrade on it is lost).
      */
-    fun replaceRoom(index: Int, room: Room): PlacedRoom {
-        val old = _rooms[index]
-        _rooms[index] = PlacedRoom(room)
+    fun placeRoom(slot: Int, room: Room): PlacedRoom? {
+        val old = _slots[slot]
+        _slots[slot] = PlacedRoom(room)
         return old
     }
 
     /**
-     * Attach an upgrade to the room at the given index, returning the upgrade it
-     * replaced (or null). Each room holds at most one upgrade.
+     * Spend a basic/advanced room card to upgrade the (occupied) room in [slot]:
+     * it gains the card's bait icons and its level rises by 1 (basic) or 2
+     * (advanced). The caller discards the spent card.
      */
-    fun applyUpgrade(index: Int, upgrade: Upgrade): Upgrade? {
-        val placed = _rooms[index]
-        val previous = placed.upgrade
-        placed.upgrade = upgrade
-        return previous
+    fun upgradeRoomWith(slot: Int, card: Room) {
+        val placed = requireNotNull(_slots[slot]) { "no room in slot $slot to upgrade" }
+        placed.upgradeWith(card)
     }
 
-    /** Replace the room list wholesale (used to undo a build placement). */
-    fun restoreRooms(snapshot: List<PlacedRoom>) {
-        _rooms.clear()
-        _rooms.addAll(snapshot)
+    /** Deep-copy the 5 slots so a build placement can be fully undone. */
+    fun snapshotSlots(): List<PlacedRoom?> = _slots.map { it?.copyState() }
+
+    /** Restore a previously captured slot snapshot (used to undo a build). */
+    fun restoreSlots(snapshot: List<PlacedRoom?>) {
+        for (i in _slots.indices) _slots[i] = snapshot.getOrNull(i)
     }
 
-    /** The leftmost (entrance) room, or null if none yet. */
-    fun entrance(): PlacedRoom? = _rooms.firstOrNull()
+    /** The leftmost occupied (entrance) room, or null if none yet. */
+    fun entrance(): PlacedRoom? = rooms.firstOrNull()
 
-    /** Encounters in crawl order: rooms left -> right, then the boss last. */
-    fun encounters(): List<Encounter> = _rooms + boss
+    /** Encounters in crawl order: occupied rooms left -> right, then the boss last. */
+    fun encounters(): List<Encounter> = rooms + boss
 
     companion object {
+        const val SLOTS = 5
         const val MAX_ROOMS = 5
     }
 }

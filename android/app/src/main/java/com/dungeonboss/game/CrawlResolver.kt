@@ -17,12 +17,12 @@ object CrawlResolver {
     data class Result(val outcome: Outcome, val remainingHealth: Int, val log: List<Step>)
 
     fun resolve(hero: Hero, dungeon: Dungeon): Result {
-        val ability = HeroAbility.lookup(hero)
-        var health = hero.health
+        var health = hero.maxHp
         val log = mutableListOf<Step>()
+        val lone = listOf(hero)
 
         for (encounter in dungeon.encounters()) {
-            val damage = ability.reduced(encounter, encounter.damage)
+            val damage = HeroAbility.damageTaken(hero, encounter, lone, encounter.damage)
             health -= damage
             log.add(Step(encounter, damage, health))
             if (health <= 0) break

@@ -8,9 +8,10 @@ and states. This document describes each screen; the rules behind them live in
 A round flows through these states:
 
 ```
-Load → Setup (choose boss → place first room) → READY
-  └─ loop: Build (discard → place/skip) → Bait+Crawl (send parties / pre-crawl)
-           or Quiet (no heroes attacked) → READY → …
+Home → Setup (choose boss → place first room) → READY
+  └─ loop: Discard (0–2) → Draw → Build (place/upgrade/skip) →
+           Crawl (Entice → Ability → Gauntlet: send parties)
+           or Quiet (no party crawled) → Recharge → READY → …
   └─ Game over
 ```
 
@@ -21,8 +22,7 @@ Every in-game screen stacks these regions top-to-bottom (the **Top bar** and
 
 ```
 ┌─ Top bar ───────────────────────────────────────────────────────────────────┐
-│ Dungeon Boss · Round <n> · <stage>      [per-player totals strip]  [Share log] [☰] │
-│ ░ menu (revealed by ☰): UI build · [ New game ] · Players <2|3|4>             │
+│ Dungeon Boss                              Players <2|3|4 ▾>  [ New game ]     │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ Round <n> · <stage>                                                           │
 │ [ decision banner — the current prompt, when one is pending ]                 │
@@ -31,7 +31,7 @@ Every in-game screen stacks these regions top-to-bottom (the **Top bar** and
 │ hero / party cards (scroll →)     │ [Boss name | you/computer | ⚔ total |     │
 │                                   │  bait totals | 🪙 points · 🩸 wounds]      │
 ├──────────────────────────────────┴────────────────────────────────────────────┤
-│ Your hand            room/upgrade/advanced cards (scroll →)                    │
+│ Your hand            room / advanced room cards (scroll →)                     │
 │ Ability cards        ability cards (when you hold any)                         │
 ├────────────────────────────────────────────────────────────────────────────────┤
 │ Player N — dungeon (entrance on the left)                                      │
@@ -44,44 +44,29 @@ Every in-game screen stacks these regions top-to-bottom (the **Top bar** and
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Menu (☰)** sits at the far right of the Top bar. During a game the menu is
-  collapsed; tapping ☰ reveals it (UI build, **New game**, **Tutorial**,
-  **Players** selector). On the **Load screen** (no game) the menu is always open.
-- **Share log** sits in the Top bar's top-right corner, immediately to the left
-  of the ☰ toggle. It is hidden on every screen **except** when the menu is
-  revealed — i.e. on the Load screen, or once ☰ has been pushed on any other
-  screen. (Share log exports the diagnostic log for bug reports.)
 - **Boss quick-sheet** shows the dungeon's total damage (`⚔ total (base+bonus)`),
   bait totals, points and wounds; an eliminated player (5 wounds) is dimmed and
   marked `☠ eliminated`. Tapping one shows that player's dungeon below.
 - **Card damage** is shown as the effective total with a small breakdown line
-  (`5 + 2 + 2` = base + upgrade + aura). Points-based bonuses are hidden while a
+  (`5 + 2 + 2` = base + aura + boost). Points-based bonuses are hidden while a
   crawl is in progress.
 
 ---
 
-## Load Screen
+## Home Screen
 
-No game in progress — the screen the app opens on. The menu is open by default
-here (no ☰ tap needed), so all of its controls are visible at once.
+No game in progress.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────┐
-│ Dungeon Boss                                                  [Share log]  [☰]  │
-│ UI build <id>                                                                  │
-│ [ New game ]  [ Tutorial ]                                                     │
-│ Players <2|3|4>                                                                │
-│ Tap New game to begin. You are Player 1; the others are computer opponents.    │
+│ Dungeon Boss                              Players <2|3|4 ▾>  [ New game ]     │
+│ Choose how many players (2–4), then tap New game. You are Player 1; the rest   │
+│ are computer opponents.                                                        │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Players** selector: 2, 3, or 4. **New game** starts a fresh game (Player 1 is
+- **Players** dropdown: 2, 3, or 4. **New game** starts a fresh game (Player 1 is
   the human; Players 2..N are computer opponents).
-- **Tutorial** opens the [Tutorial](#tutorial) — a guided, non-interactive
-  walkthrough of the rules. It is available here and from the ☰ menu mid-game.
-- **Share log** appears in the top-right next to the ☰ toggle (see the Top-bar
-  notes above). This is the one screen where it is visible without opening the
-  menu, because the menu is already open here.
 
 ---
 
@@ -107,44 +92,53 @@ rooms are tappable (the first placement must be a room).
 
 ```
 │ Player 1: choose a room to place beside your boss                              │
-│ Your hand:  [Room]* [Room]* [Upgrade] [Advanced]   (* = tappable)              │
+│ Your hand:  [Room]* [Room]* [Room] [Advanced]   (* = tappable)                 │
 │ Advance bar: "Tap a card to choose"                                            │
 ```
 
 ---
 
-## Build — Discard
+## Discard
 
-`stage = building`, decision `discard_room`. Tap any hand card to discard it
-(mandatory). After choosing, an **Undo discard** option appears during the build
-step.
+`stage = building`, decision `discard_rooms`. Tap **0, 1, or 2** hand cards to
+discard (optional — you may discard nothing), then confirm. The Draw phase then
+gives you **1 + (cards discarded)** new rooms. After confirming, an **Undo
+discard** option appears during the build step.
 
 ```
-│ Player 1: discard a room card                                                  │
-│ Your hand:  [card][card][card][card][card][card]  ← tap one to throw away      │
-│ "Tap a card to throw it away."                                                 │
-│ Advance bar: "Tap a card to discard"                                           │
+│ Player 1: discard 0–2 room cards (optional)                                    │
+│ Your hand:  [card][card][card][card][card][card]  ← tap up to two              │
+│ "Discarding more draws more: you draw 1 + the number you discard."             │
+│ Advance bar: [ Confirm discard (0) ]                                           │
 ```
 
-## Build — Place a room (or build nothing)
+## Build — Place or upgrade a room (or build nothing)
 
 Decision `build_room`. Tap a hand card, then tap a slot in your dungeon:
-a basic room adds at the entrance or replaces a room; an upgrade attaches to a
-room; an advanced room replaces a room sharing one of its bait icons.
+
+- a **room** placed into an **empty** slot fills it; into an **occupied** slot
+  replaces that room;
+- an **advanced room** may fill an empty slot, or replace a room sharing one of
+  its bait icons;
+- to **upgrade**, tap **Upgrade** on a placed room then a **room card** to spend
+  it (the room gains that card's bait icons and a level). There are no dedicated
+  upgrade cards.
 
 ```
-│ Player 1: choose a room to add to your dungeon, or build nothing               │
+│ Player 1: place a room, upgrade a room, or build nothing                       │
 │ Your hand:  [card]selectable…           [↶ Undo discard]                       │
-│ Player 1 — dungeon:  [+ add new room here] [Room]…[BOSS]   ← tap a slot        │
+│ Player 1 — dungeon:  [slot0][slot1][slot2][slot3][slot4][BOSS]  ← tap a slot   │
 │ Advance bar: [ Build nothing ]                                                 │
 ```
 
 ---
 
-## Bait + Crawl — Pre-crawl
+## Crawl — Ability step (pre-Gauntlet)
 
-`stage = crawling`, a party is about to enter a dungeon. The **Pre-crawl panel**
-shows the target dungeon's encounters and your ability cards.
+`stage = crawling`, a party has been enticed and is about to enter a dungeon (the
+**Ability** step before the Gauntlet). The panel shows the target dungeon's
+encounters and your ability cards. *(The full turn-based priority loop is a
+[TODO](phases.md#7b-ability); today this is the one pre-Gauntlet window.)*
 
 ```
 │ ⚔ <Party name> → <Owner>'s dungeon                                             │
@@ -173,7 +167,7 @@ to each hero.
 │ Crawl breakdown                                                                │
 │ ⚔ <Party> → <Owner>'s dungeon                                                  │
 │ ┌ Encounter        Hero       Damage   HP ───────────────────────────────────┐│
-│ │ Stone Ball        Barbarian   −3      8 → 5                                  ││
+│ │ Floor Spike       Barbarian   −3      8 → 5                                  ││
 │ │ Malevolent Spirit Barbarian   −11     5 → 0 💀                               ││
 │ └──────────────────────────────────────────────────────────────────────────  ┘│
 │ → <Owner> gains N points, 1 wound. Survivors: …                                │
@@ -201,16 +195,11 @@ to each hero.
 
 ```
 │ 🏆 <Winner> wins!                                                              │
-│   Player 1: score 11 (8 pts − 1 wound + 5 end-game bonus)                      │
+│   Player 1: score 6 (8 pts − 1 wound)                                          │
 │   Player 2: eliminated (5 wounds)                                              │
 │   …                                                                            │
 │ Advance bar: "Game over — tap New game to play again."                         │
 ```
-
-- The player who **ended the game** (reached 10 points, or eliminated the last
-  rival) earns a **+5 end-game bonus**, shown on their standings line; final
-  score is `points − 2 × wounds (+ 5 for the ender)`. See
-  [phases.md](phases.md) "Match end / scoring".
 
 ---
 
@@ -225,71 +214,3 @@ to each hero.
 | Quiet round | **Continue (no heroes attacked)** |
 | Ready (turn done) | **Next turn** |
 | Game over | hint: "Game over — tap New game…" |
-
----
-
-## Tutorial
-
-A guided, **non-interactive** walkthrough of the rules, opened from **Tutorial**
-on the [Load screen](#load-screen) or the ☰ menu. Each step shows a **frozen
-board** built from real cards (so it looks exactly like a game) with a narration
-panel pinned at the bottom. The board cannot be tapped; only the panel's controls
-advance it.
-
-```
-┌─ Dungeon Boss · Tutorial ─────────────────────────────────────────── [✕ Exit] ┐
-│ [ frozen board for this step — town / dungeon / hand / crawl, as needed ]      │
-│                                                                                │
-├────────────────────────────────────────────────────────────────────────────────┤
-│ <narration for this step>                                                      │
-│ Step <n> / <total>                                   [ Back ]   [ Continue ]   │
-└────────────────────────────────────────────────────────────────────────────────┘
-```
-
-- **Continue** advances; **Back** returns to the previous step; **Finish** (on
-  the last step) and **✕ Exit** both close the tutorial and return to the screen
-  underneath — the **Load screen** when launched there, where the player can
-  start a real game or run the tutorial again.
-- Some steps animate to direct the eye: a slow **pulsing glow** on bait icons,
-  and a **spotlight that cycles** through each hero and the bait it prefers.
-
-The steps, in order (each a single narrated panel):
-
-1. **What you are** — you play the villain; a dungeon of 5 rooms + the boss
-   chamber. *(Board: a full dungeon.)*
-2. **Setup** — choose a boss from two cards, then place rooms in one of 5 slots.
-   *(Board: two boss candidates + a starting hand.)*
-3. **Bait icons** — every room and the boss show bait icons. *(Board: a full
-   dungeon + one of each hero; all bait icons pulse.)*
-4. **Preferred bait** — Barbarian→glory, Rogue→riches, Cleric→undead,
-   Mage→power. *(Board: same; the spotlight cycles each hero with its bait lit
-   in the rooms.)*
-5. **Enticement & turns** — heroes take turns from the left; a hero enters only
-   the dungeon with strictly the most of its preferred bait (a tie keeps it in
-   town); bait totals sit top-right. *(Board: same, plus the bait-totals panel,
-   cycling each hero's bait there too.)*
-6. **Crawling** — a hero crosses rooms left→right, taking each room's damage
-   until it dies or clears them. *(Board: a hero about to crawl a dungeon that
-   kills it.)*
-7. **Scoring & courage** — a death scores the owner a point; survivors grow
-   cautious. Barbarians/Clerics have courage 2 (avoid dungeons with 3+ points);
-   Rogues/Mages have courage 1 (avoid 2+). *(Board: timid lone heroes; a dungeon
-   with points.)*
-8. **Staying & recruiting** — heroes that skip (timid, or tied bait) wait in
-   town and form parties at end of round, each recruiting the leftmost unpartied
-   hero of a class it lacks. *(Board: timid lone heroes, no parties yet.)*
-9. **Parties** — a party's courage is the sum of its members; its bait is the
-   sum of every member's preference (repeats count each time). *(Board: the same
-   heroes now grouped into parties.)*
-10. **Party crawl** — the highest-HP member usually takes the next room, but some
-    rooms hit all or specific heroes. *(Board: a party mid-crawl, some dead, some
-    alive.)*
-11. **Hero abilities** — Barbarian halves damage taken; Rogue −2 from traps;
-    Cleric −4 from undead rooms; Mage −4 from arcane rooms. *(Board: a party that
-    shrugs off an undead/arcane dungeon entirely.)*
-12. **Ability cards** — cards can make a party flee, raise damage, negate a room,
-    or draw rooms; start with two, gain one each round nobody is attacked.
-    *(Board: a hand of ability cards.)*
-13. **Wounds & winning** — a surviving hero gives the owner a wound (5 = loss);
-    reaching 10 points ends the game; the ender gains **+5**; then each player
-    loses 2 per wound and the most points wins. *(Board: a dungeon with points.)*

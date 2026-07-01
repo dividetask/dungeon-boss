@@ -20,8 +20,9 @@ import org.junit.Test
 import kotlin.random.Random
 
 /**
- * The Android AI (LogicAgent + DungeonForecast) must behave like the Ruby
- * reference (see webapp/test/logic_agent_test.rb and dungeon_forecast_test.rb).
+ * The AI (LogicAgent + DungeonForecast) heuristics, adapted to the flat card
+ * schema: candidates are scored by a tie-break chain, and build moves are weighed
+ * by a dry-run crawl forecast against the town.
  */
 class AiTest {
 
@@ -29,10 +30,10 @@ class AiTest {
         Boss(id = id, name = id, damage = damage, bait = BaitIcons(bait))
 
     private fun room(id: String, damage: Int, bait: Map<String, Int> = emptyMap()) =
-        Room(id = id, name = id, type = "trap", damage = damage, bait = BaitIcons(bait))
+        Room(id = id, name = id, type = "trap", bait = BaitIcons(bait), leadBase = damage)
 
     private fun hero(id: String, health: Int) =
-        Hero(id = id, name = id, health = health, preferredBait = Bait.GLORY)
+        Hero(id = id, name = id, preferredBait = Bait.GLORY, startingHp = health)
 
     private fun agent(logic: Map<String, List<Map<String, Any?>>>) = LogicAgent(logic, Random(1))
 
@@ -40,7 +41,7 @@ class AiTest {
 
     private fun dungeon(bossDamage: Int, roomDamages: List<Int>): Dungeon {
         val d = Dungeon(boss("b", bossDamage))
-        roomDamages.asReversed().forEachIndexed { i, dmg -> d.addRoomToLeft(room("r$i", dmg)) }
+        roomDamages.forEachIndexed { i, dmg -> d.placeRoom(i, room("r$i", dmg)) } // slots 0.. = left->right
         return d
     }
 
@@ -68,11 +69,11 @@ class AiTest {
     fun cloneIsAnIsolatedCopy() {
         val original = dungeon(0, listOf(5))
         val copy = DungeonForecast.clone(original)
-        copy.rooms[0].grow = 3 // mutate the clone only
+        copy.rooms[0].level = 3 // mutate the clone only
 
         assertEquals(1, copy.rooms.size)
-        assertEquals(0, original.rooms[0].grow)  // original untouched
-        assertEquals(8, copy.rooms[0].damage)    // 5 + grow 3
+        assertEquals(0, original.rooms[0].level)  // original untouched
+        assertEquals(3, copy.rooms[0].level)
     }
 
     // --- LogicAgent: static comparators ------------------------------------
@@ -93,9 +94,9 @@ class AiTest {
         player.roomHand.add(room("keep", 6))
         player.roomHand.add(room("toss", 1))
         val logic = mapOf<String, List<Map<String, Any?>>>(
-            "discard_room" to listOf(mapOf("prefer" to "lowest_damage"))
+            "discard_rooms" to listOf(mapOf("prefer" to "lowest_damage"))
         )
-        val decision = Decision(DecisionKind.DISCARD_ROOM, player, player.roomHand)
+        val decision = Decision(DecisionKind.DISCARD_ROOMS, player, player.roomHand)
 
         assertEquals("toss", agent(logic).choose(decision).first)
     }
@@ -131,14 +132,14 @@ class AiTest {
     private fun buildDecision(handDamages: List<Int>): Decision {
         val player = Player("X")
         val d = Dungeon(boss("boss", 0))
-        d.addRoomToLeft(room("existing", 1))
+        d.placeRoom(0, room("existing", 1))
         player.dungeon = d
         handDamages.forEachIndexed { i, dmg -> player.roomHand.add(room("hand${i}_$dmg", dmg)) }
         return Decision(DecisionKind.BUILD_ROOM, player, player.roomHand, allowSkip = true)
     }
 
     private fun gameWithTown(vararg heroes: Hero): Game {
-        val library = CardLibrary(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+        val library = CardLibrary(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
         val game = Game(library, listOf("A"))
         heroes.forEach { game.addToTown(it) }
         return game

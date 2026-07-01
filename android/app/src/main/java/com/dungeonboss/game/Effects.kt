@@ -76,12 +76,13 @@ object Effects {
     }
 
     /**
-     * A damage aura: +`flat` and/or +`per_point × points` to every card that
-     * matches the selector.
+     * A damage aura: +`flat` (or `amount`) and/or +`per_point × points` to every
+     * card that matches the selector. Boss `room_bonuses` use `flat`/`per_point`;
+     * a room's `room_aura` uses `amount` — both are accepted.
      */
     class Aura(raw: Map<String, Any?> = emptyMap()) {
         private val match = Effects.Selector(Effects.mapOf(raw["match"]))
-        private val flat = Effects.intOf(raw["flat"])
+        private val flat = Effects.intOf(raw["flat"]) + Effects.intOf(raw["amount"])
         private val perPoint = Effects.intOf(raw["per_point"])
 
         fun bonus(target: Any, points: Int): Int =
