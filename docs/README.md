@@ -21,6 +21,8 @@ described here. When a rule changes, change it here first.
   class's behaviour (the implementation companion to architecture.md).
 - **[screens.md](screens.md)** — Each screen/state of the UI, with layouts and
   the controls available in each.
+- **[ai.md](ai.md)** — The computer opponent (`LogicAgent`): its data-driven
+  heuristics file and the comparator vocabulary.
 
 ## Scope
 

@@ -9,15 +9,16 @@ import androidx.lifecycle.AndroidViewModel
 import com.dungeonboss.data.CardLibrary
 import com.dungeonboss.game.Decision
 import com.dungeonboss.game.Game
+import com.dungeonboss.game.LogicAgent
 import com.dungeonboss.game.Player
-import com.dungeonboss.game.RandomAgent
 
 /**
  * Holds the in-memory [Game] and exposes it to the composition. The Game mutates
  * in place, so [tick] is bumped after every action to drive recomposition.
  * [sendCounter] keys the crawl animation (one bump per party sent).
  *
- * Player 1 is you; the remaining 1–3 players are RandomAgent computer opponents.
+ * Player 1 is you; the remaining 1–3 players are LogicAgent computer opponents
+ * driven by the heuristics in assets/ai_logic.yaml.
  *
  * Every action is wrapped so that a thrown exception is written to the debug log
  * (DebugLog) and surfaced in [lastError] instead of crashing the app — the log
@@ -52,8 +53,10 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
                 "heroes=${library.heroes.size} abilities=${library.abilityCards.size}"
         )
         val names = (1..count).map { "Player $it" }
-        // Player 1 is the human; every other player is a random computer opponent.
-        val agents = names.drop(1).associateWith { RandomAgent() }
+        // Player 1 is the human; every other player is a LogicAgent computer
+        // opponent that reads its strategy from ai_logic.yaml.
+        val assets = getApplication<Application>().assets
+        val agents = names.drop(1).associateWith { assets.open(AI_LOGIC_ASSET).use { s -> LogicAgent.load(s) } }
         game = Game(library, names, agentsByName = agents).start()
         lastError = null
         DebugLog.log("newGame: started stage=${game?.stage} decision=${describe(game?.currentDecision())}")
@@ -147,6 +150,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     companion object {
         const val HUMAN_PLAYER = "Player 1"
         const val CARDS_ASSET = "cards.yaml"
+        const val AI_LOGIC_ASSET = "ai_logic.yaml"
         const val MIN_PLAYERS = 2
         const val MAX_PLAYERS = 4
     }

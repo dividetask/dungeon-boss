@@ -10,12 +10,12 @@ import kotlin.random.Random
  *   - choiceId: the chosen card id, or null to skip. For DISCARD_ROOMS it is a
  *               comma-joined list of 0–2 room ids (null/blank = discard nothing).
  *   - target:   only meaningful for build decisions — a slot index (Int) to place
- *               a room / attach an upgrade, or "upgrade:<slot>" to spend a room
- *               card upgrading a placed room. Holds no game state.
+ *               a room, or "upgrade:<slot>" to spend a room card upgrading a
+ *               placed room. Holds no game state.
  */
-class RandomAgent(private val rng: Random = Random.Default) {
+class RandomAgent(private val rng: Random = Random.Default) : Agent {
 
-    fun choose(decision: Decision): Pair<String?, Any?> = when (decision.kind) {
+    override fun choose(decision: Decision): Pair<String?, Any?> = when (decision.kind) {
         DecisionKind.BUILD_ROOM -> buildMove(decision)
         DecisionKind.DISCARD_ROOMS -> discardMove(decision)
         DecisionKind.PLACE_FIRST_ROOM -> firstRoomMove(decision)

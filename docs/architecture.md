@@ -88,8 +88,15 @@ keyed by `effect` (bosses/rooms/ability cards) or, for heroes, by the hero's own
 | `CrawlModifiers`| Per-crawl effects from ability cards / discard-to-boost (by room index):|
 |                 | +damage, zero, set-to-N, unreducible, or retreat-at-room (Retreat).    |
 | `DungeonSummary`| Read-only totals for a dungeon: total damage and bait icons by type. |
-| `RandomAgent`   | An automated player: given a `Decision`, pick a random option (and    |
-|                 | randomly skip when building is optional). Used to control opponents.  |
+| `Agent`         | Interface for an automated player: `choose(decision)` -> (choiceId, target), |
+|                 | plus `attach(game)` so an agent can read shared state (e.g. the town). |
+| `RandomAgent`   | An `Agent` that picks a random legal option (and randomly skips when   |
+|                 | building is optional). A baseline / for tests.                        |
+| `LogicAgent`    | An `Agent` driven by declarative heuristics (`ai_logic.yaml`): scores  |
+|                 | candidates with a tie-break chain, weighing build moves by a dry-run   |
+|                 | crawl forecast against the town. The computer opponents. See [ai.md](ai.md). |
+| `DungeonForecast`| Dry-run crawl of a set of parties against a (cloned) dungeon: kills,  |
+|                 | surviving parties, and damage — used by `LogicAgent` to score a move.  |
 | `CrawlLog`      | *(web app only)* Appends a readable record of every crawl — dungeon,   |
 |                 | party, per-room hits, deaths, grow/draw results — to a log file for   |
 |                 | debugging. `Game` calls it when a logger is supplied; silent otherwise.|

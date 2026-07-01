@@ -27,15 +27,16 @@ import kotlin.random.Random
  * discard-to-boost a room. Orchestration only — all rules live in the
  * phase/resolver classes. Mirrors `webapp/lib/game.rb`.
  *
- * A player may instead be controlled by an automated agent (RandomAgent);
- * decisions for an agent-controlled player are resolved by the agent and never
- * surface. The app uses this to make the opponents random computers.
+ * A player may instead be controlled by an automated [Agent] (LogicAgent for the
+ * heuristic opponent, or RandomAgent as a baseline); decisions for an
+ * agent-controlled player are resolved by the agent and never surface. The app
+ * uses this to make the opponents computers.
  */
 class Game(
     library: CardLibrary,
     playerNames: List<String>,
     val rng: Random = Random.Default,
-    agentsByName: Map<String, RandomAgent> = emptyMap()
+    agentsByName: Map<String, Agent> = emptyMap()
 ) {
     enum class Stage { UNSTARTED, SETUP, READY, BUILDING, CRAWLING, QUIET, OVER }
 
@@ -52,7 +53,7 @@ class Game(
     val heroDeck: Deck<Hero> = Deck(library.heroes, rng).shuffle()
     val abilityDeck: Deck<AbilityCard> = Deck(library.abilityCards, rng).shuffle()
 
-    private val agents: Map<Player, RandomAgent> = buildAgents(agentsByName)
+    private val agents: Map<Player, Agent> = buildAgents(agentsByName)
 
     val town: MutableList<Party> = mutableListOf() // a lone hero is a party of one
 
@@ -407,9 +408,12 @@ class Game(
         stage = Stage.READY
     }
 
-    private fun buildAgents(byName: Map<String, RandomAgent>): Map<Player, RandomAgent> {
-        val map = mutableMapOf<Player, RandomAgent>()
-        for (player in players) byName[player.name]?.let { map[player] = it }
+    private fun buildAgents(byName: Map<String, Agent>): Map<Player, Agent> {
+        val map = mutableMapOf<Player, Agent>()
+        for (player in players) byName[player.name]?.let {
+            map[player] = it
+            it.attach(this) // some agents (e.g. LogicAgent) read the town to weigh choices
+        }
         return map
     }
 
