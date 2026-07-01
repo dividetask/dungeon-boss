@@ -330,9 +330,17 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
     val g2 = newGame()
     g2.players[0].roomHand.addAll(listOf(room("room_champion"), room("room_goblins"), room("room_skeletons"), room("room_mimic")))
     steps += TutorialStep(
-        "Phase 1: Choose your Boss. Each boss has different abilities — pick one; the other is discarded.",
+        "First, choose your boss. Each boss has different abilities — pick one; the other is discarded.",
         g2,
         decision = Decision(DecisionKind.CHOOSE_BOSS, g2.players[0], listOf(boss("boss_medusa"), boss("boss_oni")))
+    )
+
+    // Phase 1 — Arrival
+    val gArrive = gameWithDungeons()
+    gArrive.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric"))
+    steps += TutorialStep(
+        "Phase 1: Arrival. At the start of each round a new hero arrives in town for every player still in the game.",
+        gArrive
     )
 
     // 3 — Discard → Draw
