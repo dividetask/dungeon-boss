@@ -73,7 +73,7 @@ import com.dungeonboss.model.Upgrade
 import kotlinx.coroutines.delay
 
 /** Bump this every UI change so the on-screen tag confirms which build is running. */
-const val UI_BUILD = "48 (tutorial: step counter, totals highlight, crash fix)"
+const val UI_BUILD = "49 (tutorial step 7: blink timid markers and points total)"
 
 /** What the human has tapped in hand while building, awaiting a dungeon slot. */
 // internal (not private) so the reusable internal GameBody can name it.
@@ -394,7 +394,8 @@ internal fun GameBody(
     // Tutorial-only highlight hooks; the live game leaves these off.
     baitHighlight: Set<Bait> = emptySet(),
     baitGlow: Float = 1f,
-    highlightHeroId: String? = null
+    highlightHeroId: String? = null,
+    timidGlow: Float = 1f
 ) {
     val human = game.players.first { it.name == humanName }
     val crawl = game.nextCrawl()
@@ -422,7 +423,7 @@ internal fun GameBody(
         verticalAlignment = Alignment.Top
     ) {
         Box(Modifier.weight(1f)) {
-            key(tick) { TownSection(game, onInspect = onShowDetail, highlightHeroId = highlightHeroId) }
+            key(tick) { TownSection(game, onInspect = onShowDetail, highlightHeroId = highlightHeroId, timidGlow = timidGlow) }
         }
         Box(Modifier.weight(2f)) {
             key(tick) {
@@ -654,7 +655,7 @@ private fun CrawlBreakdownBlock(outcome: CrawlPhase.Outcome) {
  * sideways when there are more than fit.
  */
 @Composable
-internal fun TownSection(game: Game, onInspect: (Hero) -> Unit, highlightHeroId: String? = null) {
+internal fun TownSection(game: Game, onInspect: (Hero) -> Unit, highlightHeroId: String? = null, timidGlow: Float = 1f) {
     if (game.town.isEmpty()) {
         Text("No heroes in town.", color = Palette.SubText, fontSize = 12.sp)
         return
@@ -670,10 +671,10 @@ internal fun TownSection(game: Game, onInspect: (Hero) -> Unit, highlightHeroId:
         game.town.filter { it.lone() }.groupBy { it.heroes.first().id }.values.forEach { parties ->
             val hero = parties.first().heroes.first()
             TownHeroChip(hero, parties.size, lure = lureTarget(game, parties.first()),
-                onInspect = { onInspect(hero) }, highlighted = hero.id == highlightHeroId)
+                onInspect = { onInspect(hero) }, highlighted = hero.id == highlightHeroId, timidGlow = timidGlow)
         }
         // Multi-hero parties: members shown as icon ×count on the target line.
-        game.town.filterNot { it.lone() }.forEach { party -> PartyBox(party, lureTarget(game, party), onInspect) }
+        game.town.filterNot { it.lone() }.forEach { party -> PartyBox(party, lureTarget(game, party), onInspect, timidGlow) }
     }
 }
 
@@ -697,7 +698,7 @@ private fun lureTarget(game: Game, party: Party): Lure {
  * null [lure] (an inner party-member chip) shows no line at all.
  */
 @Composable
-private fun TargetLine(lure: Lure?, normalColor: Color) {
+private fun TargetLine(lure: Lure?, normalColor: Color, timidGlow: Float = 1f) {
     if (lure == null) return
     if (lure.dungeon == null) {
         Text("🏠 stays in town", fontSize = 9.sp, color = Palette.SubText, maxLines = 1)
@@ -706,13 +707,15 @@ private fun TargetLine(lure: Lure?, normalColor: Color) {
     Text(
         "🎯 ${lure.dungeon}" + if (lure.timid) " 😨 timid" else "",
         fontSize = 9.sp,
-        color = if (lure.timid) Palette.Damage else normalColor,
+        // The tutorial pulses [timidGlow] to make the timid marker blink; the
+        // live game leaves it at 1f (solid red).
+        color = if (lure.timid) Palette.Damage.copy(alpha = timidGlow) else normalColor,
         maxLines = 1
     )
 }
 
 @Composable
-private fun PartyBox(party: Party, lure: Lure, onInspect: (Hero) -> Unit) {
+private fun PartyBox(party: Party, lure: Lure, onInspect: (Hero) -> Unit, timidGlow: Float = 1f) {
     Column(
         Modifier
             .clip(RoundedCornerShape(10.dp))
@@ -726,7 +729,7 @@ private fun PartyBox(party: Party, lure: Lure, onInspect: (Hero) -> Unit) {
         // Members as icon ×count, on the same line as the lure target. Tap an
         // icon to inspect that hero.
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TargetLine(lure, Palette.PartyHead)
+            TargetLine(lure, Palette.PartyHead, timidGlow)
             party.heroes.groupBy { it.id }.values.forEach { group ->
                 val hero = group.first()
                 Text(
@@ -749,7 +752,8 @@ private fun TownHeroChip(
     count: Int,
     lure: Lure? = null,
     onInspect: (() -> Unit)? = null,
-    highlighted: Boolean = false
+    highlighted: Boolean = false,
+    timidGlow: Float = 1f
 ) {
     Column(
         Modifier
@@ -768,7 +772,7 @@ private fun TownHeroChip(
             Text(CardArt.heroArt(hero.id), fontSize = 16.sp)
             Text(hero.name + if (count > 1) " ×$count" else "", fontWeight = FontWeight.Bold, fontSize = 12.sp)
         }
-        TargetLine(lure, Palette.SubText)
+        TargetLine(lure, Palette.SubText, timidGlow)
     }
 }
 
@@ -818,10 +822,20 @@ internal fun PlayerStatsStrip(
     game: Game,
     human: Player,
     onClick: (() -> Unit)? = null,
-    // Tutorial-only: ring the given bait's totals (opacity tracks [glow]).
+    // Tutorial-only: ring the given bait's totals and/or the points (🪙) column
+    // (opacity tracks [glow]).
     highlightBait: Bait? = null,
+    highlightPoints: Boolean = false,
     glow: Float = 1f
 ) {
+    // A pulsing ring used to spotlight a stat for the tutorial.
+    fun Modifier.ring(lit: Boolean) =
+        if (lit) this
+            .clip(RoundedCornerShape(6.dp))
+            .border(2.dp, Palette.Highlight.copy(alpha = glow), RoundedCornerShape(6.dp))
+            .padding(horizontal = 3.dp)
+        else this
+
     Row(
         Modifier
             .clip(RoundedCornerShape(8.dp))
@@ -832,19 +846,14 @@ internal fun PlayerStatsStrip(
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Bait.entries.forEach { b ->
-            val lit = b == highlightBait
-            Box(
-                if (lit) Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .border(2.dp, Palette.Highlight.copy(alpha = glow), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 3.dp)
-                else Modifier
-            ) {
+            Box(Modifier.ring(b == highlightBait)) {
                 PlayerStat(game, human, CardArt.baitEmoji[b].orEmpty()) { baitTotal(it, b) }
             }
         }
         PlayerStat(game, human, "⚔") { playerDamage(game, it) }
-        PlayerStat(game, human, "🪙") { it.points }
+        Box(Modifier.ring(highlightPoints)) {
+            PlayerStat(game, human, "🪙") { it.points }
+        }
         PlayerStat(game, human, "🩸", higherBetter = false) { it.wounds }
     }
 }

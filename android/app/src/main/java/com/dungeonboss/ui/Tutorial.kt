@@ -61,8 +61,9 @@ import kotlinx.coroutines.delay
  * What, if anything, animates on a step to draw the eye.
  *  - CYCLE        spotlights each hero and its preferred bait in the rooms
  *  - CYCLE_TOTALS spotlights each hero and its bait in the top-right totals strip
+ *  - TIMID_POINTS blinks the town's timid markers and the points (🪙) total
  */
-private enum class Highlight { NONE, FLASH_ALL_BAIT, CYCLE, CYCLE_TOTALS }
+private enum class Highlight { NONE, FLASH_ALL_BAIT, CYCLE, CYCLE_TOTALS, TIMID_POINTS }
 
 /** A party about to crawl a dungeon, with its (dry-run) predicted outcome. */
 private class CrawlView(val party: Party, val prediction: PartyCrawlResolver.Result)
@@ -126,6 +127,9 @@ fun TutorialScreen(onExit: () -> Unit) {
     }
     val totalsBait: Bait? = if (step.highlight == Highlight.CYCLE_TOTALS) activeHero?.preferredBait else null
     val highlightHeroId = activeHero?.id
+    // Step 7: blink the timid markers and the points total.
+    val timidBlink = step.highlight == Highlight.TIMID_POINTS
+    val timidGlow = if (timidBlink) glow else 1f
     val human = step.game.players.first { it.name == HUMAN }
 
     Box(
@@ -151,7 +155,7 @@ fun TutorialScreen(onExit: () -> Unit) {
                 Text("Dungeon Boss", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Text("· Tutorial ${index + 1}/${steps.size}", fontSize = 12.sp, color = Palette.SubText)
                 Spacer(Modifier.weight(1f))
-                PlayerStatsStrip(step.game, human, highlightBait = totalsBait, glow = glow)
+                PlayerStatsStrip(step.game, human, highlightBait = totalsBait, highlightPoints = timidBlink, glow = glow)
                 Box(
                     Modifier
                         .clip(RoundedCornerShape(6.dp))
@@ -214,7 +218,8 @@ fun TutorialScreen(onExit: () -> Unit) {
                         deadSet = emptyList(),
                         baitHighlight = baitHighlight,
                         baitGlow = glow,
-                        highlightHeroId = highlightHeroId
+                        highlightHeroId = highlightHeroId,
+                        timidGlow = timidGlow
                     )
                 }
             }
@@ -361,7 +366,7 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
     g7.town.addAll(lone("hero_barbarian", "hero_rogue", "hero_cleric", "hero_mage"))
     val s7 = TutorialStep(
         "Each player scores a point for each hero that dies in their dungeon. When heroes die in a dungeon other heroes become more cautious and may avoid that dungeon depending upon their courage score. Barbarians and Clerics have a courage of 2, which means they will avoid dungeons that have 3 or more points. Rogues and Mages have a courage of 1, which means they will avoid dungeons that have 2 or more points.",
-        g7
+        g7, highlight = Highlight.TIMID_POINTS
     )
 
     // 8 — skipped heroes stay and form parties
