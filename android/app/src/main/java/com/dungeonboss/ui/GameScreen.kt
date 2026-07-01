@@ -73,7 +73,7 @@ import com.dungeonboss.model.Room
 import kotlinx.coroutines.delay
 
 /** Bump this every UI change so the on-screen tag confirms which build is running. */
-const val UI_BUILD = "43 (undo an ability play in the pre-crawl window)"
+const val UI_BUILD = "44 (New game button moved to the bottom-right)"
 
 /** What the human has tapped in hand while building, awaiting a dungeon slot. */
 private data class Selection(val cardId: String)
@@ -99,6 +99,9 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
     var detailCard by remember { mutableStateOf<Any?>(null) }
     // Whether the full all-players standings dialog is open.
     var showStandings by remember { mutableStateOf(false) }
+    // Number of players for the next new game (the New game button lives at the
+    // bottom-right; the ☰ menu keeps the count selector).
+    var playerCount by remember { mutableStateOf(2) }
 
     // Pre-crawl interaction state: an ability card awaiting a room target, and a
     // boostable room awaiting a hand card to discard.
@@ -167,7 +170,8 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                     game = game,
                     human = vm.human,
                     statusText = game?.let { "Round ${it.round} · ${it.stage.name.lowercase()}" },
-                    onNewGame = { count -> vm.newGame(count) },
+                    playerCount = playerCount,
+                    onPlayerCount = { playerCount = it },
                     onShareLog = { shareLog(context) },
                     onShowStandings = { showStandings = true }
                 )
@@ -187,8 +191,14 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                 }
 
                 if (game == null) {
+                    Button(
+                        onClick = { vm.newGame(playerCount) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
+                    ) {
+                        Text("New game", color = Color.White)
+                    }
                     Text(
-                        "Tap New game to begin. You are Player 1; the others are computers.",
+                        "You are Player 1; the others are computers. Set the player count in the ☰ menu.",
                         color = Palette.SubText, fontSize = 13.sp
                     )
                 } else {
@@ -233,7 +243,6 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         },
                         onPlayBlueprints = { card -> vm.playAbility(card.id) },
                         onShowDetail = { card -> detailCard = card },
-                        onNewGame = { vm.newGame(game.players.size) },
                         activeIndex = activeIndex.value,
                         heroHp = heroHp,
                         deadSet = deadSet
@@ -252,6 +261,7 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         onDecide = { c, t -> vm.decide(c, t) },
                         onNextTurn = { vm.nextTurn() },
                         onSend = { vm.sendNextParty() },
+                        onNewGame = { vm.newGame(playerCount) },
                         onUndo = { vm.undoDiscard() },
                         onUndoBoss = { vm.undoBossChoice() },
                         onUndoPlacement = { vm.undoPlacement() },
@@ -285,11 +295,11 @@ private fun TopBar(
     game: Game?,
     human: Player?,
     statusText: String?,
-    onNewGame: (Int) -> Unit,
+    playerCount: Int,
+    onPlayerCount: (Int) -> Unit,
     onShareLog: () -> Unit,
     onShowStandings: () -> Unit
 ) {
-    var players by remember { mutableStateOf(2) }
     var menuOpen by remember { mutableStateOf(false) }
     // The menu is hidden by default during a game; it is always shown when no
     // game is in progress so the player can start one. The ☰ toggle reveals it.
@@ -345,27 +355,21 @@ private fun TopBar(
 
         if (showMenu) {
             Text("UI build $UI_BUILD", fontSize = 10.sp, color = Palette.SubText)
-            // New game + Share log on their own line underneath the title.
+            // Share log (New game lives at the bottom-right).
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Button(
-                    onClick = { onNewGame(players) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
-                ) {
-                    Text("New game", color = Color.White)
-                }
                 OutlinedButton(onClick = onShareLog) { Text("Share log", fontSize = 13.sp) }
             }
-            // Player count selector.
+            // Player count selector (applies to the next New game).
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Players:", fontSize = 12.sp, color = Palette.SubText)
                 (2..4).forEach { n ->
-                    val active = players == n
+                    val active = playerCount == n
                     Box(
                         Modifier
                             .clip(RoundedCornerShape(6.dp))
                             .background(if (active) Palette.Accent else Color.White)
                             .border(1.dp, if (active) Palette.Accent else Color(0xFFCCCCCC), RoundedCornerShape(6.dp))
-                            .clickable { players = n }
+                            .clickable { onPlayerCount(n) }
                             .padding(horizontal = 10.dp, vertical = 3.dp)
                     ) {
                         Text("$n", color = if (active) Color.White else Palette.SubText, fontSize = 12.sp)
@@ -396,7 +400,6 @@ private fun GameBody(
     onBoostWithCard: (String) -> Unit,
     onPlayBlueprints: (AbilityCard) -> Unit,
     onShowDetail: (Any) -> Unit,
-    onNewGame: () -> Unit,
     activeIndex: Int?,
     heroHp: Map<Int, Int>,
     deadSet: List<Int>
@@ -411,7 +414,7 @@ private fun GameBody(
     val roomHandFull = human.roomHand.size >= Player.MAX_ROOM_HAND
     val holdsDrawRooms = human.abilityHand.any { AbilityEffect.forCard(it).drawRooms != null }
 
-    if (game.over()) GameOverBanner(tick, game, onNewGame)
+    if (game.over()) GameOverBanner(tick, game)
 
     val choosingFirst = decision?.kind == DecisionKind.PLACE_FIRST_ROOM && decision.player == human
     val choosingDiscard = decision?.kind == DecisionKind.DISCARD_ROOMS && decision.player == human
@@ -1083,7 +1086,7 @@ private fun SurvivorMarkers(prediction: PartyCrawlResolver.Result?) {
 }
 
 @Composable
-private fun GameOverBanner(@Suppress("UNUSED_PARAMETER") tick: Int, game: Game, onNewGame: () -> Unit) {
+private fun GameOverBanner(@Suppress("UNUSED_PARAMETER") tick: Int, game: Game) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -1102,12 +1105,7 @@ private fun GameOverBanner(@Suppress("UNUSED_PARAMETER") tick: Int, game: Game, 
             }
             Text(line, fontSize = 12.sp, color = Palette.SubText)
         }
-        Button(
-            onClick = onNewGame,
-            colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
-        ) {
-            Text("New game", color = Color.White)
-        }
+        Text("Tap New game (bottom-right) to play again.", fontSize = 12.sp, color = Palette.SubText)
     }
 }
 
@@ -1119,6 +1117,7 @@ private fun AdvanceBar(
     onDecide: (String?, Any?) -> Unit,
     onNextTurn: () -> Unit,
     onSend: () -> Unit,
+    onNewGame: () -> Unit,
     onUndo: () -> Unit,
     onUndoBoss: () -> Unit,
     onUndoPlacement: () -> Unit,
@@ -1161,6 +1160,8 @@ private fun AdvanceBar(
     Surface(shadowElevation = 8.dp, color = Color.White) {
         Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), contentAlignment = Alignment.CenterEnd) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                // New game is always available at the bottom-right.
+                OutlinedButton(onClick = onNewGame) { Text("New game", fontSize = 13.sp) }
                 if (game.lastOutcomes.isNotEmpty()) {
                     // A new crawl resets the dialog so it never lingers on stale outcomes.
                     var showBreakdown by remember(game.lastOutcomes) { mutableStateOf(false) }
