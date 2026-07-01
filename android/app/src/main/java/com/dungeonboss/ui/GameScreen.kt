@@ -73,7 +73,7 @@ import com.dungeonboss.model.Room
 import kotlinx.coroutines.delay
 
 /** Bump this every UI change so the on-screen tag confirms which build is running. */
-const val UI_BUILD = "44 (New game button moved to the bottom-right)"
+const val UI_BUILD = "45 (New game button shows at bottom only when the game ends)"
 
 /** What the human has tapped in hand while building, awaiting a dungeon slot. */
 private data class Selection(val cardId: String)
@@ -1160,8 +1160,15 @@ private fun AdvanceBar(
     Surface(shadowElevation = 8.dp, color = Color.White) {
         Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), contentAlignment = Alignment.CenterEnd) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                // New game is always available at the bottom-right.
-                OutlinedButton(onClick = onNewGame) { Text("New game", fontSize = 13.sp) }
+                // New game appears at the bottom-right only once the game is over.
+                if (game.over()) {
+                    Button(
+                        onClick = onNewGame,
+                        colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
+                    ) {
+                        Text("New game", color = Color.White)
+                    }
+                }
                 if (game.lastOutcomes.isNotEmpty()) {
                     // A new crawl resets the dialog so it never lingers on stale outcomes.
                     var showBreakdown by remember(game.lastOutcomes) { mutableStateOf(false) }
