@@ -34,17 +34,17 @@
 > Task :app:writeDebugSigningConfigVersions UP-TO-DATE
 
 > Task :app:compileDebugKotlin
-w: file:///home/brett/Projects/dungeon-boss/android/app/src/main/java/com/dungeonboss/ui/GameScreen.kt:552:26 Condition is always 'true'.
+w: file:///home/brett/Projects/dungeon-boss/android/app/src/main/java/com/dungeonboss/ui/GameScreen.kt:553:26 Condition is always 'true'.
 
 > Task :app:compileDebugJavaWithJavac NO-SOURCE
 > Task :app:dexBuilderDebug
 > Task :app:mergeDebugGlobalSynthetics UP-TO-DATE
-> Task :app:processDebugJavaRes UP-TO-DATE
-> Task :app:mergeDebugJavaResource UP-TO-DATE
+> Task :app:processDebugJavaRes
 > Task :app:mergeProjectDexDebug
+> Task :app:mergeDebugJavaResource
 > Task :app:packageDebug
 > Task :app:createDebugApkListingFileRedirect UP-TO-DATE
 > Task :app:assembleDebug
 
 BUILD SUCCESSFUL in 2s
-36 actionable tasks: 6 executed, 30 up-to-date
+36 actionable tasks: 8 executed, 28 up-to-date
