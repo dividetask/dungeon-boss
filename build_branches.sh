@@ -65,15 +65,20 @@ ensure_sdk() {
   return 0
 }
 
-# Next version file from existing v0.NNN.apk (v0.016.apk -> v0.017.apk).
+# Next version file from existing vMAJOR.MINOR.apk files. Finds the highest
+# existing version (compared by major, then minor) and bumps the minor while
+# keeping that major (v0.016.apk -> v0.017.apk; v1.001.apk -> v1.002.apk).
 next_version() {
-  local max=0 n f; shopt -s nullglob
-  for f in "$VERSIONS"/v0.*.apk; do
-    n="$(basename "$f" | sed -E 's/^v0\.0*([0-9]+)\.apk$/\1/')"
-    [[ "$n" =~ ^[0-9]+$ ]] && (( n > max )) && max=$n
+  local maxmajor=0 maxminor=0 major minor f; shopt -s nullglob
+  for f in "$VERSIONS"/v*.apk; do
+    [[ "$(basename "$f")" =~ ^v0*([0-9]+)\.0*([0-9]+)\.apk$ ]] || continue
+    major="${BASH_REMATCH[1]}"; minor="${BASH_REMATCH[2]}"
+    if (( major > maxmajor || (major == maxmajor && minor > maxminor) )); then
+      maxmajor=$major; maxminor=$minor
+    fi
   done
   shopt -u nullglob
-  printf 'v0.%03d.apk' $((max + 1))
+  printf 'v%d.%03d.apk' "$maxmajor" $((maxminor + 1))
 }
 
 # Loop forever: do one full pass over all branches, then wait 15 minutes and repeat.
@@ -96,7 +101,9 @@ for branch in ${BRANCHES[@]+"${BRANCHES[@]}"}; do
   echo "=== $branch (${sha:0:7}) ==="
   git checkout -B "$branch" "$REMOTE/$branch" >/dev/null 2>&1 || { echo "  checkout failed"; continue; }
   mkdir -p "$LOGS" "$VERSIONS"
-  log="$LOGS/${branch//\//_}.log"
+  # One log per branch is unnecessary: the file is committed to the branch it
+  # describes, so each branch only ever carries its own. Use a fixed name.
+  log="$LOGS/build.log"
 
   if [ -d android ]; then
     ensure_sdk || true
@@ -106,8 +113,20 @@ for branch in ${BRANCHES[@]+"${BRANCHES[@]}"}; do
     echo "  gradle exit $rc"
     if [ "$rc" -eq 0 ] && [ -f "$APK" ]; then
       cp "$APK" "$VERSIONS/latest.apk"
+    elif [ "$rc" -eq 0 ]; then
+      echo "BUILD reported success (exit 0) but no APK was found at $APK — nothing to version." >> "$log"
+    elif [ "$rc" -gt 128 ]; then
+      # Exit > 128 means the process was killed by a signal (rc = 128 + signal).
+      # Gradle never produced a FAILURE block because it was terminated, not a
+      # build error — say so instead of the misleading generic message.
+      sig=$((rc - 128)); name="SIG$(kill -l "$sig" 2>/dev/null || echo "$sig")"
+      echo "BUILD INTERRUPTED — Gradle was killed by signal $sig ($name), exit $rc." >> "$log"
+      echo "This is not a compile error: the process was terminated before it could finish" >> "$log"
+      echo "(e.g. Ctrl-C/interrupt for SIGINT, a timeout/kill for SIGTERM, or the OS" >> "$log"
+      echo "out-of-memory killer for SIGKILL). No new APK; re-run the build to retry." >> "$log"
     else
-      echo "BUILD FAILED (exit $rc) — no new APK." >> "$log"
+      echo "BUILD FAILED (exit $rc) — no new APK. See the Gradle output above;" >> "$log"
+      echo "re-run with --stacktrace or --info (append to TASK) for more detail." >> "$log"
     fi
   else
     echo "no android/ on this branch" > "$log"
