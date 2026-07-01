@@ -163,7 +163,8 @@ and a party of two**.
 
 - **Match end / scoring.** A player with **5 wounds** is eliminated. The game
   ends when a player reaches **10 points** or all but one player is eliminated.
-  A surviving player's final score is **points − 2 × wounds**; highest wins, and
+  The player who **ends the game gains a 5-point bonus**. A surviving player's
+  final score is **points − 2 × wounds (+ 5 for the ender)**; highest wins, and
   a tie goes to whoever ended the game.
 - **Deck exhaustion / reshuffling.** Whenever a card must be drawn but its draw
   pile is empty, that deck's **discard pile is shuffled back into the draw

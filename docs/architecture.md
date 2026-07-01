@@ -48,7 +48,7 @@ keyed by `effect` (bosses/rooms/ability cards) or by hero `id` (`HeroAbility`).
 | `PlacedRoom` | A room as it sits in a dungeon: a base `Room` plus at most one          |
 |            | `Upgrade`; exposes effective damage and bait.                             |
 | `Scoreboard` | Decides whether the game is over and who won (10 points / 5 wounds /     |
-|            | points − 2×wounds).                                                       |
+|            | points − 2×wounds, +5 end-game bonus for the ender).                       |
 | `Decision` | A choice the game is waiting on a player to make (which boss to keep,     |
 |            | which room to place, or whether to build). Describes options; no logic.   |
 | `Game`     | Owns the players and the decks, and drives the turn as a sequence of      |

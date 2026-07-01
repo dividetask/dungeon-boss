@@ -175,13 +175,13 @@ display_name ↦ name, else heroes joined with " & "
 
 ### Scoreboard
 ```
-LOSS_WOUNDS=5, WIN_POINTS=10
+LOSS_WOUNDS=5, WIN_POINTS=10, END_GAME_BONUS=5
 eliminated?(p) ↦ p.wounds >= 5
-score(p)       ↦ p.points - 2*p.wounds
+score(p, ender=nil) ↦ p.points - 2*p.wounds + (p is ender ? 5 : 0)
 survivors(ps)  ↦ ps with < 5 wounds
 over?(ps)      ↦ any p.points >= 10  OR  survivors.size <= 1
-winner(ps, ender) ↦ highest score among survivors; tie → the ender; none → ender
-standings(ps)  ↦ sorted best-first, eliminated last
+winner(ps, ender) ↦ highest score(·, ender) among survivors; tie → the ender; none → ender
+standings(ps, ender=nil) ↦ sorted best-first by score(·, ender), eliminated last
 ```
 
 ### Decision  (a pending player choice; pure data)
