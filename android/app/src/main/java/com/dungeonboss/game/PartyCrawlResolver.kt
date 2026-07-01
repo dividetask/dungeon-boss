@@ -220,6 +220,9 @@ object PartyCrawlResolver {
         /** This room's resist mode, with an Expose-Weakness modifier forcing NO_REDUCE. */
         private fun resistMode(encounter: Encounter): Resist {
             if (!mods.reducible(roomIndex)) return Resist.NO_REDUCE
+            // A boss may declare its own attack unreducible via effect.unreducible
+            // (Medusa's petrifying gaze); rooms express the same via room_resist.
+            if (Effects.boolOf(encounter.effect["unreducible"])) return Resist.NO_REDUCE
             return when (encounter.roomResist) {
                 true -> Resist.NO_REDUCE
                 false -> Resist.NO_HALVE
