@@ -73,10 +73,10 @@ import com.dungeonboss.model.Room
 import kotlinx.coroutines.delay
 
 /** Bump this every UI change so the on-screen tag confirms which build is running. */
-const val UI_BUILD = "45 (New game button shows at bottom only when the game ends)"
+const val UI_BUILD = "46 (tutorial rewritten for the new rules)"
 
 /** What the human has tapped in hand while building, awaiting a dungeon slot. */
-private data class Selection(val cardId: String)
+internal data class Selection(val cardId: String)
 
 @Composable
 fun GameScreen(vm: GameViewModel = viewModel()) {
@@ -102,6 +102,8 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
     // Number of players for the next new game (the New game button lives at the
     // bottom-right; the ☰ menu keeps the count selector).
     var playerCount by remember { mutableStateOf(2) }
+    // Whether the non-interactive tutorial overlay is showing.
+    var showTutorial by remember { mutableStateOf(false) }
 
     // Pre-crawl interaction state: an ability card awaiting a room target, and a
     // boostable room awaiting a hand card to discard.
@@ -173,7 +175,8 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                     playerCount = playerCount,
                     onPlayerCount = { playerCount = it },
                     onShareLog = { shareLog(context) },
-                    onShowStandings = { showStandings = true }
+                    onShowStandings = { showStandings = true },
+                    onStartTutorial = { showTutorial = true }
                 )
 
                 // Diagnostics: surface action failures and where the log lives.
@@ -286,6 +289,10 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                 onDismiss = { showStandings = false }
             )
         }
+        // The tutorial is a full-screen overlay drawn above the game.
+        if (showTutorial) {
+            TutorialScreen(onExit = { showTutorial = false })
+        }
     }
 }
 
@@ -298,7 +305,8 @@ private fun TopBar(
     playerCount: Int,
     onPlayerCount: (Int) -> Unit,
     onShareLog: () -> Unit,
-    onShowStandings: () -> Unit
+    onShowStandings: () -> Unit,
+    onStartTutorial: () -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     // The menu is hidden by default during a game; it is always shown when no
@@ -323,22 +331,7 @@ private fun TopBar(
                 // key(tick): these read off the stable Player objects, which
                 // Compose would otherwise skip.
                 key(tick) {
-                    Row(
-                        Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, Color(0xFFCCCCCC), RoundedCornerShape(8.dp))
-                            .clickable { onShowStandings() }
-                            .padding(horizontal = 8.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Bait.entries.forEach { b ->
-                            PlayerStat(game, human, CardArt.baitEmoji[b].orEmpty()) { baitTotal(it, b) }
-                        }
-                        PlayerStat(game, human, "⚔") { playerDamage(game, it) }
-                        PlayerStat(game, human, "🪙") { it.points }
-                        PlayerStat(game, human, "🩸", higherBetter = false) { it.wounds }
-                    }
+                    PlayerStatsStrip(game, human, onClick = onShowStandings)
                 }
             }
             Box(
@@ -355,8 +348,9 @@ private fun TopBar(
 
         if (showMenu) {
             Text("UI build $UI_BUILD", fontSize = 10.sp, color = Palette.SubText)
-            // Share log (New game lives at the bottom-right).
+            // Tutorial + Share log (New game lives at the bottom-right).
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = onStartTutorial) { Text("Tutorial", fontSize = 13.sp) }
                 OutlinedButton(onClick = onShareLog) { Text("Share log", fontSize = 13.sp) }
             }
             // Player count selector (applies to the next New game).
@@ -381,7 +375,7 @@ private fun TopBar(
 }
 
 @Composable
-private fun GameBody(
+internal fun GameBody(
     tick: Int,
     game: Game,
     humanName: String,
@@ -402,7 +396,12 @@ private fun GameBody(
     onShowDetail: (Any) -> Unit,
     activeIndex: Int?,
     heroHp: Map<Int, Int>,
-    deadSet: List<Int>
+    deadSet: List<Int>,
+    // Tutorial-only highlight hooks; the live game leaves these off.
+    baitHighlight: Set<Bait> = emptySet(),
+    baitGlow: Float = 1f,
+    highlightHeroId: String? = null,
+    timidGlow: Float = 1f
 ) {
     val human = game.players.first { it.name == humanName }
     val crawl = game.nextCrawl()
@@ -430,7 +429,7 @@ private fun GameBody(
         verticalAlignment = Alignment.Top
     ) {
         Box(Modifier.weight(1f)) {
-            key(tick) { TownSection(game, onInspect = onShowDetail) }
+            key(tick) { TownSection(game, onInspect = onShowDetail, highlightHeroId = highlightHeroId, timidGlow = timidGlow) }
         }
         Box(Modifier.weight(2f)) {
             key(tick) {
@@ -577,7 +576,9 @@ private fun GameBody(
             onShowDetail = onShowDetail,
             activeIndex = if (isCrawledHere) activeIndex else null,
             incoming = incoming,
-            prediction = prediction
+            prediction = prediction,
+            baitHighlight = baitHighlight,
+            baitGlow = baitGlow
         )
     }
 
@@ -686,7 +687,12 @@ private fun CrawlBreakdownBlock(outcome: GauntletPhase.Outcome) {
  * sideways when there are more than fit.
  */
 @Composable
-private fun TownSection(game: Game, onInspect: (Hero) -> Unit) {
+private fun TownSection(
+    game: Game,
+    onInspect: (Hero) -> Unit,
+    highlightHeroId: String? = null,
+    timidGlow: Float = 1f
+) {
     if (game.town.isEmpty()) {
         Text("No heroes in town.", color = Palette.SubText, fontSize = 12.sp)
         return
@@ -702,10 +708,10 @@ private fun TownSection(game: Game, onInspect: (Hero) -> Unit) {
         game.town.filter { it.lone() }.groupBy { it.heroes.first().id }.values.forEach { parties ->
             val hero = parties.first().heroes.first()
             TownHeroChip(hero, parties.size, lure = lureTarget(game, parties.first()),
-                onInspect = { onInspect(hero) })
+                onInspect = { onInspect(hero) }, highlighted = hero.id == highlightHeroId, timidGlow = timidGlow)
         }
         // Multi-hero parties: members shown as icon ×count on the target line.
-        game.town.filterNot { it.lone() }.forEach { party -> PartyBox(party, lureTarget(game, party), onInspect) }
+        game.town.filterNot { it.lone() }.forEach { party -> PartyBox(party, lureTarget(game, party), onInspect, timidGlow) }
     }
 }
 
@@ -729,7 +735,7 @@ private fun lureTarget(game: Game, party: Party): Lure {
  * null [lure] (an inner party-member chip) shows no line at all.
  */
 @Composable
-private fun TargetLine(lure: Lure?, normalColor: Color) {
+private fun TargetLine(lure: Lure?, normalColor: Color, timidGlow: Float = 1f) {
     if (lure == null) return
     if (lure.dungeon == null) {
         Text("🏠 stays in town", fontSize = 9.sp, color = Palette.SubText, maxLines = 1)
@@ -738,13 +744,14 @@ private fun TargetLine(lure: Lure?, normalColor: Color) {
     Text(
         "🎯 ${lure.dungeon}" + if (lure.timid) " 😨 timid" else "",
         fontSize = 9.sp,
-        color = if (lure.timid) Palette.Damage else normalColor,
+        // The tutorial pulses [timidGlow] to make the timid marker blink.
+        color = if (lure.timid) Palette.Damage.copy(alpha = timidGlow) else normalColor,
         maxLines = 1
     )
 }
 
 @Composable
-private fun PartyBox(party: Party, lure: Lure, onInspect: (Hero) -> Unit) {
+private fun PartyBox(party: Party, lure: Lure, onInspect: (Hero) -> Unit, timidGlow: Float = 1f) {
     Column(
         Modifier
             .clip(RoundedCornerShape(10.dp))
@@ -758,7 +765,7 @@ private fun PartyBox(party: Party, lure: Lure, onInspect: (Hero) -> Unit) {
         // Members as icon ×count, on the same line as the lure target. Tap an
         // icon to inspect that hero.
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TargetLine(lure, Palette.PartyHead)
+            TargetLine(lure, Palette.PartyHead, timidGlow)
             party.heroes.groupBy { it.id }.values.forEach { group ->
                 val hero = group.first()
                 Text(
@@ -776,12 +783,23 @@ private fun PartyBox(party: Party, lure: Lure, onInspect: (Hero) -> Unit) {
  * is lured. Stats are hidden — tap the chip to inspect the hero.
  */
 @Composable
-private fun TownHeroChip(hero: Hero, count: Int, lure: Lure? = null, onInspect: (() -> Unit)? = null) {
+private fun TownHeroChip(
+    hero: Hero,
+    count: Int,
+    lure: Lure? = null,
+    onInspect: (() -> Unit)? = null,
+    highlighted: Boolean = false,
+    timidGlow: Float = 1f
+) {
     Column(
         Modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(Palette.HeroBg)
-            .border(1.dp, Palette.HeroBorder, RoundedCornerShape(8.dp))
+            .background(if (highlighted) Palette.HighlightFill else Palette.HeroBg)
+            .border(
+                if (highlighted) 3.dp else 1.dp,
+                if (highlighted) Palette.Highlight else Palette.HeroBorder,
+                RoundedCornerShape(8.dp)
+            )
             .then(if (onInspect != null) Modifier.clickable { onInspect() } else Modifier)
             .padding(horizontal = 6.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(1.dp)
@@ -790,7 +808,7 @@ private fun TownHeroChip(hero: Hero, count: Int, lure: Lure? = null, onInspect: 
             Text(CardArt.heroArt(hero.id), fontSize = 16.sp)
             Text(hero.name + if (count > 1) " ×$count" else "", fontWeight = FontWeight.Bold, fontSize = 12.sp)
         }
-        TargetLine(lure, Palette.SubText)
+        TargetLine(lure, Palette.SubText, timidGlow)
     }
 }
 
@@ -813,6 +831,50 @@ private fun WithCount(count: Int, content: @Composable () -> Unit) {
         ) {
             Text("×$count", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
+    }
+}
+
+/**
+ * The per-player totals strip (bait icons, then ⚔ damage, 🪙 points, 🩸 wounds),
+ * each shown as you/opponent… in seating order. Used in the Top bar and reused
+ * unchanged by the tutorial so both read identically. [onClick] opens standings.
+ * The tutorial-only [highlightBait] / [highlightPoints] / [glow] ring a stat.
+ */
+@Composable
+internal fun PlayerStatsStrip(
+    game: Game,
+    human: Player,
+    onClick: (() -> Unit)? = null,
+    highlightBait: Bait? = null,
+    highlightPoints: Boolean = false,
+    glow: Float = 1f
+) {
+    fun Modifier.ring(lit: Boolean) =
+        if (lit) this
+            .clip(RoundedCornerShape(6.dp))
+            .border(2.dp, Palette.Highlight.copy(alpha = glow), RoundedCornerShape(6.dp))
+            .padding(horizontal = 3.dp)
+        else this
+
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .border(1.dp, Color(0xFFCCCCCC), RoundedCornerShape(8.dp))
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Bait.entries.forEach { b ->
+            Box(Modifier.ring(b == highlightBait)) {
+                PlayerStat(game, human, CardArt.baitEmoji[b].orEmpty()) { baitTotal(it, b) }
+            }
+        }
+        PlayerStat(game, human, "⚔") { playerDamage(game, it) }
+        Box(Modifier.ring(highlightPoints)) {
+            PlayerStat(game, human, "🪙") { it.points }
+        }
+        PlayerStat(game, human, "🩸", higherBetter = false) { it.wounds }
     }
 }
 
@@ -919,7 +981,7 @@ private fun StandingsDialog(game: Game, onView: (String) -> Unit, onDismiss: () 
 }
 
 @Composable
-private fun DungeonBoard(
+internal fun DungeonBoard(
     @Suppress("UNUSED_PARAMETER") tick: Int,
     game: Game,
     player: Player,
@@ -934,7 +996,10 @@ private fun DungeonBoard(
     onShowDetail: (Any) -> Unit,
     activeIndex: Int?,
     incoming: Party? = null,
-    prediction: PartyCrawlResolver.Result? = null
+    prediction: PartyCrawlResolver.Result? = null,
+    // Tutorial-only bait spotlight, forwarded to the room/boss cards.
+    baitHighlight: Set<Bait> = emptySet(),
+    baitGlow: Float = 1f
 ) {
     val dungeon = player.dungeon
     Row(
@@ -989,7 +1054,8 @@ private fun DungeonBoard(
                             }
                             RoomCardView(placed, mod, highlighted = activeIndex == ei,
                                 parts = EncounterDamage.parts(dungeon, placed, points, mods, ei),
-                                onInfo = { onShowDetail(placed) })
+                                onInfo = { onShowDetail(placed) },
+                                baitHighlight = baitHighlight, baitGlow = baitGlow)
                             if (slotUpgrade != null) {
                                 OutlinedButton(onClick = { slotUpgrade(slot) }) {
                                     Text("Upgrade", fontSize = 11.sp)
@@ -1011,7 +1077,8 @@ private fun DungeonBoard(
                     BossCardView(dungeon.boss, Modifier, highlighted = activeIndex == bossIndex,
                         parts = EncounterDamage.parts(dungeon, dungeon.boss, points, mods, bossIndex),
                         ownerLabel = ownerLabel,
-                        onInfo = { onShowDetail(dungeon.boss) })
+                        onInfo = { onShowDetail(dungeon.boss) },
+                        baitHighlight = baitHighlight, baitGlow = baitGlow)
                     DeathMarkers(prediction, bossIndex)
                     SurvivorMarkers(prediction)
                 }

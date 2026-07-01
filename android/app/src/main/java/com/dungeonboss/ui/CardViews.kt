@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dungeonboss.model.AbilityCard
+import com.dungeonboss.model.Bait
 import com.dungeonboss.model.BaitIcons
 import com.dungeonboss.model.Boss
 import com.dungeonboss.model.BuildCard
@@ -77,9 +78,15 @@ private fun CardHeader(glyph: String, name: String) {
 
 /** Bait pips followed by the special-effect / upgrade markers, on one line. */
 @Composable
-private fun BaitWithMarkers(bait: BaitIcons, hasEffect: Boolean, upgraded: Boolean) {
+private fun BaitWithMarkers(
+    bait: BaitIcons,
+    hasEffect: Boolean,
+    upgraded: Boolean,
+    baitHighlight: Set<Bait> = emptySet(),
+    baitGlow: Float = 1f
+) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-        BaitPips(bait)
+        BaitPips(bait, baitHighlight, baitGlow)
         if (hasEffect) Text("✨", fontSize = 11.sp)
         if (upgraded) Text("⬆️", fontSize = 11.sp)
     }
@@ -145,8 +152,13 @@ private fun CardDesc(text: String) {
     }
 }
 
+/**
+ * Bait pips. Any bait in [highlight] gets a glowing ring whose opacity tracks
+ * [glow] (0..1) — used by the tutorial to draw attention to specific bait. The
+ * live game leaves both at their defaults, so pips render unchanged.
+ */
 @Composable
-fun BaitPips(icons: BaitIcons) {
+fun BaitPips(icons: BaitIcons, highlight: Set<Bait> = emptySet(), glow: Float = 1f) {
     val map = icons.toMap()
     if (map.isEmpty()) {
         Box(Modifier) // keep the row height stable when there is no bait
@@ -155,10 +167,15 @@ fun BaitPips(icons: BaitIcons) {
     Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
         map.forEach { (bait, count) ->
             val label = if (count > 1) "${CardArt.baitEmoji[bait]}×$count" else CardArt.baitEmoji[bait].orEmpty()
+            val lit = bait in highlight
             Box(
                 Modifier
                     .clip(RoundedCornerShape(9.dp))
                     .background(CardArt.pipColor(bait))
+                    .then(
+                        if (lit) Modifier.border(2.dp, Palette.Highlight.copy(alpha = glow), RoundedCornerShape(9.dp))
+                        else Modifier
+                    )
                     .padding(horizontal = 5.dp, vertical = 1.dp)
             ) {
                 Text(label, fontSize = 11.sp)
@@ -204,14 +221,16 @@ fun BossCardView(
     highlighted: Boolean = false,
     parts: List<Int>? = null,
     ownerLabel: String? = null,
-    onInfo: (() -> Unit)? = null
+    onInfo: (() -> Unit)? = null,
+    baitHighlight: Set<Bait> = emptySet(),
+    baitGlow: Float = 1f
 ) {
     WithInfo(onInfo) {
         CardFrame(Palette.BossBg, Palette.BossBorder, modifier, highlighted) {
             CardHeader(CardArt.bossArt(boss.id), boss.name + (ownerLabel?.let { " ($it)" } ?: ""))
             StatRow(
                 { Damage(parts?.sum() ?: boss.displayDamage) },
-                { BaitWithMarkers(boss.bait, hasEffect = boss.hasSpecial, upgraded = false) }
+                { BaitWithMarkers(boss.bait, hasEffect = boss.hasSpecial, upgraded = false, baitHighlight = baitHighlight, baitGlow = baitGlow) }
             )
             DamageBreakdown(parts)
         }
@@ -224,7 +243,9 @@ fun RoomCardView(
     modifier: Modifier = Modifier,
     highlighted: Boolean = false,
     parts: List<Int>? = null,
-    onInfo: (() -> Unit)? = null
+    onInfo: (() -> Unit)? = null,
+    baitHighlight: Set<Bait> = emptySet(),
+    baitGlow: Float = 1f
 ) {
     val advanced = placed.baseRoom.advanced
     WithInfo(onInfo) {
@@ -236,7 +257,7 @@ fun RoomCardView(
             CardHeader(CardArt.roomArt(placed.type), placed.name)
             StatRow(
                 { Damage(parts?.sum() ?: placed.displayDamage) },
-                { BaitWithMarkers(placed.bait, hasEffect = placed.hasSpecial, upgraded = placed.level > 0) }
+                { BaitWithMarkers(placed.bait, hasEffect = placed.hasSpecial, upgraded = placed.level > 0, baitHighlight = baitHighlight, baitGlow = baitGlow) }
             )
             DamageBreakdown(parts)
         }
