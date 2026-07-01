@@ -92,5 +92,6 @@ bosses:
       room_bonuses:
         - match: { type: creature, tag: undead }
           flat: 2
-    ability_text: "All undead creatures in this dungeon deal an additional 2 damage."
+          per_point: 1
+    ability_text: "Undead creatures deal +2 damage, plus +1 more per point scored."
 
