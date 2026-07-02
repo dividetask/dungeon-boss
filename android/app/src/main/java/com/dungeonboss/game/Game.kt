@@ -97,6 +97,7 @@ class Game(
     private val decisions = ArrayDeque<Decision>()
     private val crawlQueue = mutableListOf<Party>()           // parties still to evaluate this turn
     private val turnParties = mutableListOf<Party>()          // stable ordered snapshot of the turn's parties (UI)
+    private val turnOutcomes = LinkedHashMap<Party, GauntletPhase.Outcome>() // resolved crawl per party this turn (UI)
     private var currentCrawl: Pair<Player, Party>? = null     // party in the pre-crawl window
     private var anyEntered = false                            // did any party enter this turn?
     private val attackedThisTurn = mutableSetOf<Player>()     // players whose dungeon was crawled
@@ -191,6 +192,7 @@ class Game(
         agentPreCrawl(player)
         val outcome = GauntletPhase.resolveParty(this, player, party, crawlModifiers)
         lastOutcomes = listOf(outcome)
+        turnOutcomes[party] = outcome    // retained for the crawl-progress row's fate markers
         crawlSurvivors.addAll(outcome.result.survivors) // survivors level up in Recharge
         applyDeathDraws(player, outcome.result)
         currentCrawl = null
@@ -313,6 +315,13 @@ class Game(
      * (after). Empty outside the Crawl phase.
      */
     fun crawlOrder(): List<Party> = turnParties.toList()
+
+    /**
+     * The resolved crawl for [party] this turn, or null if it has not crawled yet
+     * (or never entered a dungeon). Lets the crawl-progress row mark each member
+     * as died / survived / fled once its party has gone.
+     */
+    fun crawlOutcomeFor(party: Party): GauntletPhase.Outcome? = turnOutcomes[party]
 
     /**
      * Predict the result of the pending crawl WITHOUT committing it — who dies,
@@ -628,6 +637,7 @@ class Game(
                 crawlQueue.addAll(town)
                 turnParties.clear()
                 turnParties.addAll(town)          // stable order for the crawl-progress row
+                turnOutcomes.clear()
                 waitingParties = mutableListOf()
                 anyEntered = false
                 attackedThisTurn.clear()

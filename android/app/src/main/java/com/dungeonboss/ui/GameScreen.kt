@@ -606,12 +606,8 @@ internal fun GameBody(
     }
 
     if (isCrawledHere && outcome != null) {
-        // A clear gap + label separates the crawl that just resolved (below) from
-        // the next crawl's forecast on the board above, which was confusing when
-        // both showed at once.
-        Spacer(Modifier.height(16.dp))
-        Text("— just crawled —", fontSize = 9.sp, color = Palette.SubText, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(3.dp))
+        // The just-crawled party's hero HP bars, directly beneath the dungeon
+        // (the per-party summary lives in the crawl-progress row above the board).
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1193,21 +1189,35 @@ private enum class CrawlPartyState(val bg: Color, val border: Color) {
     WAITING(Color(0xFFE1EEFB), Color(0xFF4C8FD6))   // still waiting (blue)
 }
 
+/** A crawled hero's fate marker for the progress row: died / fled / survived. */
+private fun heroFate(outcome: GauntletPhase.Outcome, hero: Hero): String = when {
+    outcome.result.deadHeroes.any { it === hero } -> "💀"
+    outcome.retreated -> "↩"   // any member that lived through a retreat fled
+    else -> "✓"
+}
+
+/** Height reserved for the crawl-progress row so the dungeon never shifts up. */
+private val CrawlRowHeight = 26.dp
+
 /**
  * The crawl-progress row: every party this turn as a compact box, in town order,
  * coloured by state (grey done / green about-to-go / blue waiting). "Party i of
  * N" is pinned on the left and never scrolls; the boxes scroll horizontally when
- * there are many parties. Renders nothing outside the Crawl phase.
+ * there are many parties. Outside the Crawl phase it stays present but empty,
+ * holding its height so the dungeon below keeps a steady position.
  */
 @Composable
 private fun CrawlPartyRow(game: Game, onShowDetail: (Any) -> Unit) {
     val parties = game.crawlOrder()
     val current = game.nextCrawl()?.second
-    if (!game.crawling() || parties.isEmpty() || current == null) return
+    if (!game.crawling() || parties.isEmpty() || current == null) {
+        Spacer(Modifier.height(CrawlRowHeight))   // reserve space between phases
+        return
+    }
     val currentIdx = parties.indexOfFirst { it === current }.coerceAtLeast(0)
 
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth().heightIn(min = CrawlRowHeight),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -1234,9 +1244,10 @@ private fun CrawlPartyRow(game: Game, onShowDetail: (Any) -> Unit) {
 }
 
 /**
- * One party in the crawl-progress row: its members grouped by class + level
- * (icon, level, ×count) followed by the boss icon of the dungeon it is headed
- * into. The current party uses its real target; others use their strongest lure.
+ * One party in the crawl-progress row: its members (grouped by class + level)
+ * with the boss icon of the dungeon it is headed into. Once the party has
+ * crawled, each member also carries its fate — 💀 died, ↩ fled, ✓ survived —
+ * and members are grouped by class + level + fate so mixed outcomes stay clear.
  */
 @Composable
 private fun CrawlPartyChip(
@@ -1248,6 +1259,10 @@ private fun CrawlPartyChip(
 ) {
     val target = if (isCurrent) game.nextCrawl()?.first else EnticePhase.mostEnticingPlayer(game, party)
     val bossId = target?.dungeon?.boss?.id
+    val outcome = game.crawlOutcomeFor(party)
+    // After a crawl the party loses its dead members, so read the full roster and
+    // each member's fate from the retained outcome instead of party.heroes.
+    val roster = outcome?.result?.participants ?: party.heroes
     Row(
         Modifier
             .clip(RoundedCornerShape(7.dp))
@@ -1257,9 +1272,10 @@ private fun CrawlPartyChip(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // Lone heroes of the same class may differ in level, so group by both.
-        party.heroes.groupBy { it.id to it.level }.values.forEach { grp ->
+        // Group identical members: by class + level, plus fate once they've gone.
+        roster.groupBy { Triple(it.id, it.level, outcome?.let { o -> heroFate(o, it) }) }.values.forEach { grp ->
             val hero = grp.first()
+            val fate = outcome?.let { heroFate(it, hero) }
             Row(
                 Modifier.clickable { onShowDetail(hero) },
                 verticalAlignment = Alignment.CenterVertically,
@@ -1268,6 +1284,7 @@ private fun CrawlPartyChip(
                 Text(CardArt.heroArt(hero.id), fontSize = 13.sp)
                 LevelBadge(hero.level)
                 if (grp.size > 1) Text("×${grp.size}", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                if (fate != null) Text(fate, fontSize = 11.sp)
             }
         }
         if (bossId != null) Text(CardArt.bossArt(bossId), fontSize = 13.sp)
