@@ -96,6 +96,7 @@ class Game(
 
     private val decisions = ArrayDeque<Decision>()
     private val crawlQueue = mutableListOf<Party>()           // parties still to evaluate this turn
+    private val turnParties = mutableListOf<Party>()          // stable ordered snapshot of the turn's parties (UI)
     private var currentCrawl: Pair<Player, Party>? = null     // party in the pre-crawl window
     private var anyEntered = false                            // did any party enter this turn?
     private val attackedThisTurn = mutableSetOf<Player>()     // players whose dungeon was crawled
@@ -303,6 +304,15 @@ class Game(
 
     /** The party currently in the pre-crawl window, or null. */
     fun nextCrawl(): Pair<Player, Party>? = currentCrawl
+
+    /**
+     * Ordered snapshot of every party that will be evaluated for a crawl this
+     * turn (town order, captured when the Crawl phase begins). Drives the
+     * crawl-progress row: its position of [nextCrawl] marks which have already
+     * been dealt with (before), which is about to go (at), and which still wait
+     * (after). Empty outside the Crawl phase.
+     */
+    fun crawlOrder(): List<Party> = turnParties.toList()
 
     /**
      * Predict the result of the pending crawl WITHOUT committing it — who dies,
@@ -616,6 +626,8 @@ class Game(
                 // Entice + Gauntlet combined: evaluate parties for entry one at a time.
                 crawlQueue.clear()
                 crawlQueue.addAll(town)
+                turnParties.clear()
+                turnParties.addAll(town)          // stable order for the crawl-progress row
                 waitingParties = mutableListOf()
                 anyEntered = false
                 attackedThisTurn.clear()

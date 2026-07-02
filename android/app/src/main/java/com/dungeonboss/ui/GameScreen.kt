@@ -99,6 +99,10 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
     var detailCard by remember { mutableStateOf<Any?>(null) }
     // Whether the full all-players standings dialog is open.
     var showStandings by remember { mutableStateOf(false) }
+    // When non-null, the player whose dungeon the user is peeking at (picked from
+    // Standings). It overrides the auto-viewed dungeon and swaps the bottom bar
+    // for a single Return button until the user returns to the live view.
+    var viewingOther by remember { mutableStateOf<String?>(null) }
     // Number of players for the next new game (the New game button lives at the
     // bottom-right; the ☰ menu keeps the count selector).
     var playerCount by remember { mutableStateOf(2) }
@@ -220,7 +224,9 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         tick = tick,
                         game = game,
                         humanName = humanName,
-                        viewed = viewed.value,
+                        // A peeked dungeon (from Standings) overrides the auto-viewed
+                        // one; guard against a stale name after a new game.
+                        viewed = viewingOther?.takeIf { n -> game.players.any { it.name == n } } ?: viewed.value,
                         decision = decision,
                         selection = selection,
                         onSelect = { sel -> selection = if (selection?.cardId == sel.cardId) null else sel },
@@ -272,6 +278,8 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                 key(tick) {
                     AdvanceBar(
                         tick = tick, game = game, humanName = humanName,
+                        viewingOther = viewingOther != null,
+                        onReturn = { viewingOther = null },
                         onDecide = { c, t -> vm.decide(c, t) },
                         onNextTurn = { vm.nextTurn() },
                         onSend = { vm.sendNextParty() },
@@ -296,7 +304,7 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
         if (showStandings && game != null) {
             StandingsDialog(
                 game = game,
-                onView = { name -> viewed.value = name; showStandings = false },
+                onView = { name -> viewingOther = name; showStandings = false },
                 onDismiss = { showStandings = false }
             )
         }
@@ -571,6 +579,10 @@ internal fun GameBody(
     // The party in the pre-crawl window enters this dungeon; preview its fate.
     val incoming = if (preCrawl && crawlOwner == viewedPlayer) crawl?.second else null
     val prediction = if (incoming != null) game.predictCurrentCrawl() else null
+    // Crawl-progress row (between the hand row and the dungeon): each party this
+    // turn as a compact coloured box — grey = done, green = about to crawl,
+    // blue = still waiting. Empty outside the Crawl phase.
+    key(tick) { CrawlPartyRow(game, onShowDetail) }
     key(tick) {
         DungeonBoard(
             tick = tick,
@@ -952,52 +964,31 @@ private fun PlayerStat(
 /** The full all-players standings (best first); tap a player to view its dungeon. */
 @Composable
 private fun StandingsDialog(game: Game, onView: (String) -> Unit, onDismiss: () -> Unit) {
-    // Bound the dialog to most of the screen so the rows scroll instead of being
-    // clipped — in landscape four players are taller than the (short) window.
-    val maxH = (LocalConfiguration.current.screenHeightDp * 0.85f).dp
+    val standings = game.standings()
+    // Three or four players: two columns so nothing has to scroll. Two players
+    // stay in a single narrow column.
+    val twoCol = game.players.size >= 3
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(12.dp), color = Color.White) {
             Column(
-                Modifier.widthIn(min = 260.dp, max = 340.dp).heightIn(max = maxH).padding(16.dp),
+                Modifier.widthIn(min = 260.dp, max = if (twoCol) 660.dp else 340.dp).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text("Standings", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Column(
-                    Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                game.standings().forEach { s ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (s.eliminated) Color(0xFFF1F1F1) else Palette.HighlightFill)
-                            .clickable { onView(s.player.name); onDismiss() }
-                            .padding(8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(s.player.dungeon?.boss?.name ?: s.player.name,
-                                fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            Text(
-                                (if (game.automated(s.player)) "computer" else "you") +
-                                    (if (s.eliminated) " · eliminated" else ""),
-                                fontSize = 11.sp, color = Palette.SubText
-                            )
-                            // Bait totals for this player's dungeon.
-                            Text(
-                                Bait.entries.joinToString("  ") { "${CardArt.baitEmoji[it]}${baitTotal(s.player, it)}" },
-                                fontSize = 12.sp
-                            )
+                if (twoCol) {
+                    val half = (standings.size + 1) / 2   // rank order fills the left column first
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            standings.take(half).forEach { StandingCard(game, it, onView, onDismiss) }
                         }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("🪙 ${s.player.points} · 🩸 ${s.player.wounds}", fontSize = 12.sp)
-                            Text("score ${s.score} · ⚔ ${playerDamage(game, s.player)}",
-                                fontSize = 11.sp, color = Palette.SubText)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            standings.drop(half).forEach { StandingCard(game, it, onView, onDismiss) }
                         }
                     }
-                }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        standings.forEach { StandingCard(game, it, onView, onDismiss) }
+                    }
                 }
                 Text("Tap a player to view their dungeon.", fontSize = 11.sp, color = Palette.SubText)
                 Button(
@@ -1008,6 +999,51 @@ private fun StandingsDialog(game: Game, onView: (String) -> Unit, onDismiss: () 
                     Text("Close", color = Color.White)
                 }
             }
+        }
+    }
+}
+
+/**
+ * One player's standings card: the boss icon + name + the boss's own damage on
+ * the top line, then role/elimination, bait totals, and points/wounds/score.
+ * Tapping it views that player's dungeon.
+ */
+@Composable
+private fun StandingCard(
+    game: Game,
+    s: Scoreboard.Standing,
+    onView: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val boss = s.player.dungeon?.boss
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (s.eliminated) Color(0xFFF1F1F1) else Palette.HighlightFill)
+            .clickable { onView(s.player.name); onDismiss() }
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(if (boss != null) CardArt.bossArt(boss.id) else "🏰", fontSize = 15.sp)
+            Text(boss?.name ?: s.player.name, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                modifier = Modifier.weight(1f), maxLines = 1)
+            if (boss != null) {
+                Text("⚔${boss.damage}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Palette.Damage)
+            }
+        }
+        Text(
+            (if (game.automated(s.player)) "computer" else "you") + (if (s.eliminated) " · eliminated" else ""),
+            fontSize = 11.sp, color = Palette.SubText
+        )
+        Text(
+            Bait.entries.joinToString("  ") { "${CardArt.baitEmoji[it]}${baitTotal(s.player, it)}" },
+            fontSize = 12.sp
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("🪙 ${s.player.points} · 🩸 ${s.player.wounds}", fontSize = 12.sp)
+            Text("score ${s.score} · ⚔ ${playerDamage(game, s.player)}", fontSize = 11.sp, color = Palette.SubText)
         }
     }
 }
@@ -1150,6 +1186,94 @@ private fun IncomingParty(party: Party, onShowDetail: (Any) -> Unit) {
     }
 }
 
+/** Colour scheme for a party box in the crawl-progress row, by its crawl state. */
+private enum class CrawlPartyState(val bg: Color, val border: Color) {
+    WENT(Color(0xFFECECEC), Color(0xFFB8B8B8)),     // already dealt with (grey)
+    NOW(Color(0xFFDDF4E0), Color(0xFF3FA34D)),      // about to crawl (green)
+    WAITING(Color(0xFFE1EEFB), Color(0xFF4C8FD6))   // still waiting (blue)
+}
+
+/**
+ * The crawl-progress row: every party this turn as a compact box, in town order,
+ * coloured by state (grey done / green about-to-go / blue waiting). "Party i of
+ * N" is pinned on the left and never scrolls; the boxes scroll horizontally when
+ * there are many parties. Renders nothing outside the Crawl phase.
+ */
+@Composable
+private fun CrawlPartyRow(game: Game, onShowDetail: (Any) -> Unit) {
+    val parties = game.crawlOrder()
+    val current = game.nextCrawl()?.second
+    if (!game.crawling() || parties.isEmpty() || current == null) return
+    val currentIdx = parties.indexOfFirst { it === current }.coerceAtLeast(0)
+
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        // Pinned position label — always visible, outside the scrolling region.
+        Text(
+            "Party ${currentIdx + 1} of ${parties.size}",
+            fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Palette.SubText, maxLines = 1
+        )
+        Row(
+            Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            parties.forEachIndexed { i, party ->
+                val state = when {
+                    i < currentIdx -> CrawlPartyState.WENT
+                    i == currentIdx -> CrawlPartyState.NOW
+                    else -> CrawlPartyState.WAITING
+                }
+                CrawlPartyChip(game, party, isCurrent = party === current, state = state, onShowDetail = onShowDetail)
+            }
+        }
+    }
+}
+
+/**
+ * One party in the crawl-progress row: its members grouped by class + level
+ * (icon, level, ×count) followed by the boss icon of the dungeon it is headed
+ * into. The current party uses its real target; others use their strongest lure.
+ */
+@Composable
+private fun CrawlPartyChip(
+    game: Game,
+    party: Party,
+    isCurrent: Boolean,
+    state: CrawlPartyState,
+    onShowDetail: (Any) -> Unit
+) {
+    val target = if (isCurrent) game.nextCrawl()?.first else EnticePhase.mostEnticingPlayer(game, party)
+    val bossId = target?.dungeon?.boss?.id
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(7.dp))
+            .background(state.bg)
+            .border(1.5.dp, state.border, RoundedCornerShape(7.dp))
+            .padding(horizontal = 5.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        // Lone heroes of the same class may differ in level, so group by both.
+        party.heroes.groupBy { it.id to it.level }.values.forEach { grp ->
+            val hero = grp.first()
+            Row(
+                Modifier.clickable { onShowDetail(hero) },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                Text(CardArt.heroArt(hero.id), fontSize = 13.sp)
+                LevelBadge(hero.level)
+                if (grp.size > 1) Text("×${grp.size}", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        if (bossId != null) Text(CardArt.bossArt(bossId), fontSize = 13.sp)
+    }
+}
+
 /**
  * Under an encounter: WHICH hero(es) die there — each dying hero's class icon
  * with a 💀 (×N if several of the same class fall in that room). Reads the
@@ -1259,6 +1383,8 @@ private fun AdvanceBar(
     @Suppress("UNUSED_PARAMETER") tick: Int,
     game: Game,
     humanName: String,
+    viewingOther: Boolean = false,
+    onReturn: () -> Unit = {},
     onDecide: (String?, Any?) -> Unit,
     onNextTurn: () -> Unit,
     onSend: () -> Unit,
@@ -1273,6 +1399,25 @@ private fun AdvanceBar(
     pendingBoostRoom: Int?,
     discardSelection: List<String> = emptyList()
 ) {
+    // While peeking at another player's dungeon (from Standings), the whole bar
+    // becomes a single Return button that snaps back to the live view.
+    if (viewingOther) {
+        Surface(shadowElevation = 8.dp, color = Color.White) {
+            Box(
+                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Button(
+                    onClick = onReturn,
+                    colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
+                ) {
+                    Text("Return", color = Color.White, fontSize = 15.sp)
+                }
+            }
+        }
+        return
+    }
+
     val decision = game.currentDecision()
     val human = game.players.first { it.name == humanName }
     val mineKind = decision?.takeIf { it.player == human }?.kind
