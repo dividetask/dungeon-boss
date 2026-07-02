@@ -278,6 +278,12 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
     fun hero(id: String): Hero = lib.heroes.first { it.id == id }
     fun ability(id: String): AbilityCard = lib.abilityCards.first { it.id == id }
 
+    // A DISTINCT hero copy at a chosen level for the leveling demo — using the
+    // last pool copy (never the hero(id) first copy) so its mutated level doesn't
+    // leak into other steps.
+    fun leveled(id: String, level: Int): Hero =
+        lib.heroes.last { it.id == id }.also { it.level = level }
+
     fun newGame() = Game(lib, listOf("Player 1", "Player 2"))
 
     // Build a dungeon: rooms fill slots left→right (first id is the entrance).
@@ -452,7 +458,16 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
         g14, crawl = CrawlView(clericMage, PartyCrawlResolver.resolve(clericMage, warded, dryRun = true))
     )
 
-    // 15 — resist and poison
+    // 15 — hero leveling
+    val gLevel = gameWithDungeons()
+    gLevel.town.add(Party(listOf(leveled("hero_barbarian", 4))))
+    gLevel.town.add(Party(listOf(hero("hero_cleric"))))
+    steps += TutorialStep(
+        "Every hero has a LEVEL, shown as the L badge on its card (blue, turning gold for a seasoned veteran). All heroes start at level 1 and level up each time they SURVIVE a crawl — gaining more HP, more courage, and stronger defences. So a hero that keeps escaping your dungeon grows into a real threat; heroes that arrive in later rounds also start at a higher level.",
+        gLevel
+    )
+
+    // 16 — resist and poison
     val nasty = dungeon("boss_medusa", listOf("adv_gladiator", "room_floor_spike", "adv_cursed_ring"))
     val g15 = newGame().also { it.players[0].dungeon = nasty }
     val tough = Party(listOf(hero("hero_barbarian"), hero("hero_cleric")))
@@ -461,7 +476,7 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
         g15, crawl = CrawlView(tough, PartyCrawlResolver.resolve(tough, nasty, dryRun = true))
     )
 
-    // 16 — advanced rooms, draw-on-death, discard-to-boost
+    // 17 — advanced rooms, draw-on-death, discard-to-boost
     val g16 = newGame()
     g16.players[0].dungeon = dungeon("boss_necromancer", listOf("room_sacrifice_pit", "adv_troll", "room_power_word"))
     g16.players[0].roomHand.addAll(listOf(room("room_goblins"), room("room_mimic")))
@@ -470,7 +485,7 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
         g16
     )
 
-    // 17 — ability cards
+    // 18 — ability cards
     val g17 = gameWithDungeons()
     g17.players[0].abilityHand.addAll(
         listOf(
@@ -486,7 +501,7 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
         g17
     )
 
-    // 18 — wounds and winning
+    // 19 — wounds and winning
     steps += TutorialStep(
         "If a hero survives your whole dungeon you take a wound; 5 wounds knocks you out. The game ends when someone reaches 10 points — the player who ends it gains 5 bonus points. Final score is points minus 2 per wound; highest wins.",
         gameWithDungeons(points = 8)
