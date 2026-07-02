@@ -589,7 +589,8 @@ internal fun GameBody(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             outcome.result.participants.forEachIndexed { i, hero ->
-                HeroChip(hero.name, heroHp[i] ?: hero.maxHp, hero.maxHp, deadSet.contains(i))
+                val dead = deadSet.contains(i)
+                HeroChip(hero.name, heroHp[i] ?: hero.maxHp, hero.maxHp, dead, fled = outcome.retreated && !dead)
             }
         }
     }
@@ -638,11 +639,23 @@ private fun CrawlBreakdownDialog(outcomes: List<GauntletPhase.Outcome>, onDismis
 private fun CrawlBreakdownBlock(outcome: GauntletPhase.Outcome) {
     val result = outcome.result
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(
-            "⚔ ${outcome.party.displayName()} → ${outcome.player.name}'s dungeon" +
-                if (outcome.retreated) " ↩ retreated" else "",
-            fontWeight = FontWeight.Bold, fontSize = 13.sp
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                "⚔ ${outcome.party.displayName()} → ${outcome.player.name}'s dungeon",
+                fontWeight = FontWeight.Bold, fontSize = 13.sp
+            )
+            if (outcome.retreated) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Palette.FledBg)
+                        .border(1.dp, Palette.FledBorder, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                ) {
+                    Text("↩ FLED", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Palette.FledText)
+                }
+            }
+        }
         Row(Modifier.fillMaxWidth()) {
             Text("Encounter", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Palette.TypeText, modifier = Modifier.weight(2f))
             Text("Hero", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Palette.TypeText, modifier = Modifier.weight(1.4f))
@@ -672,10 +685,12 @@ private fun CrawlBreakdownBlock(outcome: GauntletPhase.Outcome) {
         }
         val deaths = result.deaths
         val wounded = !outcome.retreated && result.survivors.isNotEmpty()
-        val survivors = if (result.survivors.isEmpty()) "none" else result.survivors.joinToString(", ") { it.name }
+        val leaverLabel = if (outcome.retreated) "Fled" else "Survivors"
+        val leavers = if (result.survivors.isEmpty()) "none" else result.survivors.joinToString(", ") { it.name }
         Text(
             "→ ${outcome.player.name} gains $deaths point${if (deaths == 1) "" else "s"}" +
-                (if (wounded) ", 1 wound" else "") + ". Survivors: $survivors.",
+                (if (wounded) ", 1 wound" else if (outcome.retreated) ", no wound" else "") +
+                ". $leaverLabel: $leavers.",
             fontSize = 11.sp, color = Palette.SubText
         )
     }
@@ -1080,7 +1095,7 @@ internal fun DungeonBoard(
                         onInfo = { onShowDetail(dungeon.boss) },
                         baitHighlight = baitHighlight, baitGlow = baitGlow)
                     DeathMarkers(prediction, bossIndex)
-                    SurvivorMarkers(prediction)
+                    SurvivorMarkers(prediction, retreated = mods?.retreating() == true)
                 }
             }
         }
@@ -1115,38 +1130,57 @@ private fun IncomingParty(party: Party) {
     }
 }
 
-/** A red 💀×N marker under an encounter showing how many heroes die there. */
+/**
+ * Under an encounter: WHICH hero(es) die there — each dying hero's class icon
+ * with a 💀 (×N if several of the same class fall in that room). Reads the
+ * per-step log so the marker names the victim, not just a count.
+ */
 @Composable
 private fun DeathMarkers(prediction: PartyCrawlResolver.Result?, encounterIndex: Int) {
-    val count = prediction?.log?.count { it.died && it.roomIndex == encounterIndex } ?: 0
-    if (count == 0) return
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(Palette.DyingBg)
-            .border(1.dp, Palette.Damage, RoundedCornerShape(6.dp))
-            .padding(horizontal = 4.dp, vertical = 1.dp)
-    ) {
-        Text("💀" + if (count > 1) " ×$count" else "", fontSize = 12.sp, color = Palette.Damage)
+    val dyers = prediction?.log?.filter { it.died && it.roomIndex == encounterIndex }?.map { it.hero } ?: emptyList()
+    if (dyers.isEmpty()) return
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        dyers.groupBy { it.id }.values.forEach { group ->
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Palette.DyingBg)
+                    .border(1.dp, Palette.Damage, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            ) {
+                Text(
+                    "${CardArt.heroArt(group.first().id)}💀" + if (group.size > 1) "×${group.size}" else "",
+                    fontSize = 12.sp, color = Palette.Damage
+                )
+            }
+        }
     }
 }
 
-/** Green markers under the boss for the heroes who survive the whole crawl. */
+/**
+ * Under the boss: heroes who leave alive. Surviving the whole crawl (the owner
+ * takes a wound) reads green with a ✓; fleeing via a Retreat (no wound) reads
+ * amber with a ↩, so the two outcomes are visually distinct.
+ */
 @Composable
-private fun SurvivorMarkers(prediction: PartyCrawlResolver.Result?) {
+private fun SurvivorMarkers(prediction: PartyCrawlResolver.Result?, retreated: Boolean = false) {
     val survivors = prediction?.survivors ?: emptyList()
     if (survivors.isEmpty()) return
+    val bg = if (retreated) Palette.FledBg else Palette.PartyBg
+    val border = if (retreated) Palette.FledBorder else Palette.PartyBorder
+    val fg = if (retreated) Palette.FledText else Palette.PartyHead
+    val mark = if (retreated) "↩" else "✓"
     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         survivors.groupBy { it.id }.values.forEach { group ->
             Box(
                 Modifier
                     .clip(RoundedCornerShape(6.dp))
-                    .background(Palette.PartyBg)
-                    .border(1.dp, Palette.PartyBorder, RoundedCornerShape(6.dp))
+                    .background(bg)
+                    .border(1.dp, border, RoundedCornerShape(6.dp))
                     .padding(horizontal = 3.dp, vertical = 1.dp)
             ) {
-                Text("✓${CardArt.heroArt(group.first().id)}" + if (group.size > 1) "×${group.size}" else "",
-                    fontSize = 12.sp, color = Palette.PartyHead)
+                Text("$mark${CardArt.heroArt(group.first().id)}" + if (group.size > 1) "×${group.size}" else "",
+                    fontSize = 12.sp, color = fg)
             }
         }
     }

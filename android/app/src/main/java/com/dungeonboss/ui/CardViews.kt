@@ -392,17 +392,31 @@ fun EmptyRoomSlot(slot: Int, active: Boolean, modifier: Modifier = Modifier) {
     }
 }
 
-/** A walking-party hero chip shown under the dungeon during a crawl. */
+/**
+ * A walking-party hero chip shown under the dungeon during a crawl. A hero that
+ * [dead] is red with 💀; one that [fled] (survived only because the party
+ * retreated) is amber with ↩; one that survived the full crawl is the normal
+ * accent colour — so fleeing and surviving read differently.
+ */
 @Composable
-fun HeroChip(name: String, hp: Int, maxHp: Int, dead: Boolean) {
+fun HeroChip(name: String, hp: Int, maxHp: Int, dead: Boolean, fled: Boolean = false) {
+    val bg = when {
+        dead -> Palette.DeadChip
+        fled -> Palette.FledText // darker amber for white-text contrast
+        else -> Palette.Accent
+    }
     Box(
         Modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(if (dead) Palette.DeadChip else Palette.Accent)
+            .background(bg)
             .padding(horizontal = 7.dp, vertical = 4.dp)
     ) {
         Text(
-            text = "$name (HP $hp/$maxHp)" + if (dead) " 💀" else "",
+            text = "$name (HP $hp/$maxHp)" + when {
+                dead -> " 💀"
+                fled -> " ↩ fled"
+                else -> ""
+            },
             color = Color.White,
             fontSize = 12.sp
         )
