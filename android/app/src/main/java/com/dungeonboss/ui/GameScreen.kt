@@ -583,7 +583,12 @@ internal fun GameBody(
     }
 
     if (isCrawledHere && outcome != null) {
-        Spacer(Modifier.height(2.dp))
+        // A clear gap + label separates the crawl that just resolved (below) from
+        // the next crawl's forecast on the board above, which was confusing when
+        // both showed at once.
+        Spacer(Modifier.height(16.dp))
+        Text("— just crawled —", fontSize = 9.sp, color = Palette.SubText, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(3.dp))
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1026,7 +1031,7 @@ internal fun DungeonBoard(
         // Heroes enter from the left, so the party about to crawl sits to the left
         // of the entrance, fixed; the dungeon scrolls within the remaining width so
         // the boss is always reachable.
-        if (dungeon != null && incoming != null) IncomingParty(incoming)
+        if (dungeon != null && incoming != null) IncomingParty(incoming, onShowDetail)
         Row(
             Modifier.weight(1f).horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1106,11 +1111,11 @@ internal fun DungeonBoard(
 
 /**
  * The party about to crawl, shown to the left of the dungeon (heroes enter from
- * the left). No stats — just each hero class with ×count. Where each dies is
+ * the left). Each hero chip is tappable to open its stats. Where each dies is
  * shown by a red marker in the room itself (see [DeathMarkers]).
  */
 @Composable
-private fun IncomingParty(party: Party) {
+private fun IncomingParty(party: Party, onShowDetail: (Any) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(3.dp), horizontalAlignment = Alignment.Start) {
         Text("entering →", fontSize = 9.sp, color = Palette.SubText, fontWeight = FontWeight.Bold)
         party.heroes.groupBy { it.id }.values.forEach { group ->
@@ -1120,6 +1125,7 @@ private fun IncomingParty(party: Party) {
                     .clip(RoundedCornerShape(8.dp))
                     .background(Palette.HeroBg)
                     .border(1.dp, Palette.HeroBorder, RoundedCornerShape(8.dp))
+                    .clickable { onShowDetail(hero) } // tap to see this hero's stats
                     .padding(horizontal = 6.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
