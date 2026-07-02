@@ -85,10 +85,20 @@ private fun BaitWithMarkers(
     baitHighlight: Set<Bait> = emptySet(),
     baitGlow: Float = 1f
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-        BaitPips(bait, baitHighlight, baitGlow)
-        if (hasEffect) Text("✨", fontSize = 11.sp)
-        if (upgraded) Text("⬆️", fontSize = 11.sp)
+    // Cards accumulate icons (one pip per bait type, plus the ✨ effect and ⬆️
+    // upgrade markers). At 4+ they overflow the fixed-width card, so shrink the
+    // whole row — font, padding and spacing — once we reach that count. Three
+    // icons (e.g. two bait + ✨) still fit at full size.
+    val iconCount = bait.toMap().size + (if (hasEffect) 1 else 0) + (if (upgraded) 1 else 0)
+    val compact = iconCount >= 4
+    val markerFont = if (compact) 8.sp else 11.sp
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 3.dp)
+    ) {
+        BaitPips(bait, baitHighlight, baitGlow, compact = compact)
+        if (hasEffect) Text("✨", fontSize = markerFont)
+        if (upgraded) Text("⬆️", fontSize = markerFont)
     }
 }
 
@@ -155,30 +165,40 @@ private fun CardDesc(text: String) {
 /**
  * Bait pips. Any bait in [highlight] gets a glowing ring whose opacity tracks
  * [glow] (0..1) — used by the tutorial to draw attention to specific bait. The
- * live game leaves both at their defaults, so pips render unchanged.
+ * live game leaves both at their defaults, so pips render unchanged. [compact]
+ * shrinks each pip (font, padding, spacing) so a crowded 4+-icon card still fits.
  */
 @Composable
-fun BaitPips(icons: BaitIcons, highlight: Set<Bait> = emptySet(), glow: Float = 1f) {
+fun BaitPips(
+    icons: BaitIcons,
+    highlight: Set<Bait> = emptySet(),
+    glow: Float = 1f,
+    compact: Boolean = false
+) {
     val map = icons.toMap()
     if (map.isEmpty()) {
         Box(Modifier) // keep the row height stable when there is no bait
         return
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+    val font = if (compact) 8.sp else 11.sp
+    val corner = if (compact) 6.dp else 9.dp
+    val hPad = if (compact) 3.dp else 5.dp
+    val vPad = if (compact) 0.dp else 1.dp
+    Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 3.dp)) {
         map.forEach { (bait, count) ->
             val label = if (count > 1) "${CardArt.baitEmoji[bait]}×$count" else CardArt.baitEmoji[bait].orEmpty()
             val lit = bait in highlight
             Box(
                 Modifier
-                    .clip(RoundedCornerShape(9.dp))
+                    .clip(RoundedCornerShape(corner))
                     .background(CardArt.pipColor(bait))
                     .then(
-                        if (lit) Modifier.border(2.dp, Palette.Highlight.copy(alpha = glow), RoundedCornerShape(9.dp))
+                        if (lit) Modifier.border(2.dp, Palette.Highlight.copy(alpha = glow), RoundedCornerShape(corner))
                         else Modifier
                     )
-                    .padding(horizontal = 5.dp, vertical = 1.dp)
+                    .padding(horizontal = hPad, vertical = vPad)
             ) {
-                Text(label, fontSize = 11.sp)
+                Text(label, fontSize = font)
             }
         }
     }
