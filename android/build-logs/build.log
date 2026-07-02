@@ -46,5 +46,5 @@ w: file:///home/brett/Projects/dungeon-boss/android/app/src/main/java/com/dungeo
 > Task :app:createDebugApkListingFileRedirect UP-TO-DATE
 > Task :app:assembleDebug
 
-BUILD SUCCESSFUL in 3s
+BUILD SUCCESSFUL in 2s
 36 actionable tasks: 4 executed, 32 up-to-date
