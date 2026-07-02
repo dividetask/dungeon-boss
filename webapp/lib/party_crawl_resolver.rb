@@ -9,7 +9,7 @@ require_relative "crawl_modifiers"
 # order: a poison tick, the room's party-wide hits (Antimagic/Zealots,
 # unreducible), then a single-target hit on the highest-health hero (reducible).
 # Single-target damage includes the room's grow bonus, dungeon auras (Trap
-# Makers / Beast Tamer), and the boss's points bonus. A hero damaged by a Poison
+# Makers / Hobgoblin Beastmaster), and the boss's points bonus. A hero damaged by a Poison
 # Gas room is poisoned (+1 unreducible per later room). A hero that hits 0 dies;
 # grow-on-death rooms gain +1 permanently per death there.
 # Stateless entry point; uses an instance to carry crawl state.

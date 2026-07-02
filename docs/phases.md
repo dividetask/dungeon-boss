@@ -167,7 +167,7 @@ encounter in order:
 4. **Rear** — `damage_rear` hits the lowest-current-health (most injured) member,
    cascading upward (Black Tentacles).
 
-The boss's points bonus, **Trap Makers / Beast Tamer** `room_aura`s, and per-crawl
+The boss's points bonus, **Trap Makers / Hobgoblin Beastmaster** `room_aura`s, and per-crawl
 modifiers fold into the room's primary channel. `room_resist` controls reduction:
 `null` normal, `false` cannot be halved (the Barbarian's self multiplier is
 skipped), `true` cannot be reduced at all. A hero damaged by a room with

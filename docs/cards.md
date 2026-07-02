@@ -45,7 +45,7 @@ the bait. The current classification tags:
 | Tag | On | Boss that keys off it |
 |-----|----|-----------------------|
 | `arcane` | the six arcane **trap** rooms (Fireball, Power Word, Cursed Ring, Antimagic, Black Tentacles, Maze) | **Lich** (`type: trap` + `tag: arcane`) |
-| `undead` | the six undead **creatures** (Skeletons, Zombies, Shade, Zealots, Shadow, Wright) — also on the Undead Hands trap | **Necromancer** (`type: creature` + `tag: undead`) |
+| `undead` | the six undead **creatures** (Skeletons, Zombies, Shade, Zealots, Shadow, Wight) — also on the Undead Hands trap | **Necromancer** (`type: creature` + `tag: undead`) |
 | `monstrous_humanoid` | the humanoid glory creatures (Goblins, Hobgoblin Champion, Gladiator, Troll, Hobgoblin Beastmaster) | **Oni** (+4 flat) |
 | `goblin` / `hobgoblin` | Goblins / the two Hobgoblin rooms | **Goblin Chieftain** (+1/point) |
 
@@ -273,11 +273,11 @@ The twelve advanced rooms (one copy per player): **Antimagic Room** (`damage_all
 4, filter mage, can't reduce), **Zealots** (filter cleric), **False Trigger**
 (filter rogue), **Gladiator** (lead 4 +2/level, grows, can't reduce), **Troll** (lead 10 +4/level,
 grows), **Shadow** (`damage_rear` 6 +2/level, grows, can't be halved — a fast undead
-snowball that picks off the weakest first), **Wright** (lead 6, `draw_on_death` —
+snowball that picks off the weakest first), **Wight** (lead 6, `draw_on_death` —
 a card-advantage drainer), **Mirror**
 (`lead_max_party_hp` — an unreducible lead hit for the party's highest max HP),
 **Black Tentacles** (`damage_all` 1 + `damage_rear` 5), **Maze** (`damage_all` 4,
-`poison_ticks` 3), **Trap Makers Workshop** / **Beast Tamer** (`room_aura` +2 to
+`poison_ticks` 3), **Trap Makers Workshop** / **Hobgoblin Beastmaster** (`room_aura` +2 to
 other traps / creatures).
 
 Cursed Ring moved to the **basic** rooms (arcane+riches trap, lead 2, can't

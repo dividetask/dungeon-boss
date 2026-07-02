@@ -8,7 +8,7 @@ require_relative "effects"
 #
 #   effect:
 #     room_auras:                       # +damage to OTHER matching rooms
-#       - match: { type: trap }         #   (Trap Makers / Beast Tamer)
+#       - match: { type: trap }         #   (Trap Makers / Hobgoblin Beastmaster)
 #         flat: 2
 #     party_hits:                       # unreducible hits on matching members
 #       - match: { preferred_bait: power }   #   (Antimagic / Zealots)
