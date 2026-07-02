@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dungeonboss.model.AbilityCard
@@ -35,7 +36,12 @@ import com.dungeonboss.model.PlacedRoom
 import com.dungeonboss.model.Room
 
 private val CARD_WIDTH = 116.dp
-private val CARD_HEIGHT = 76.dp
+// Board cards (boss / dungeon room) must still fit a two-line boss name plus its
+// damage + optional breakdown line, so they only shrink modestly.
+private val CARD_HEIGHT = 64.dp
+// Hand cards (rooms / abilities) carry just a heading and a stat line, so they
+// drop to about a hero chip's height — that is where the vertical room is won.
+private val HAND_CARD_HEIGHT = 46.dp
 private val CARD_SHAPE = RoundedCornerShape(10.dp)
 
 /**
@@ -48,12 +54,13 @@ fun CardFrame(
     border: Color,
     modifier: Modifier = Modifier,
     highlighted: Boolean = false,
+    height: Dp = CARD_HEIGHT,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(
         modifier
             .width(CARD_WIDTH)
-            .height(CARD_HEIGHT)
+            .height(height)
             .clip(CARD_SHAPE)
             .background(bg)
             .border(
@@ -61,7 +68,7 @@ fun CardFrame(
                 if (highlighted) Palette.Highlight else border,
                 CARD_SHAPE
             )
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            .padding(horizontal = 6.dp, vertical = 3.dp),
         verticalArrangement = Arrangement.spacedBy(1.dp),
         content = content
     )
@@ -297,7 +304,7 @@ fun HandCardView(
             is Room -> CardFrame(
                 if (card.advanced) Palette.AdvancedBg else Palette.CardBg,
                 if (card.advanced) Palette.AdvancedBorder else Palette.CardBorder,
-                modifier, highlighted
+                modifier, highlighted, height = HAND_CARD_HEIGHT
             ) {
                 CardHeader(CardArt.roomArt(card.type), card.name)
                 StatRow(
@@ -347,9 +354,8 @@ fun AbilityCardView(
     onInfo: (() -> Unit)? = null
 ) {
     WithInfo(onInfo) {
-        CardFrame(Palette.AbilityBg, Palette.AbilityBorder, modifier, highlighted) {
+        CardFrame(Palette.AbilityBg, Palette.AbilityBorder, modifier, highlighted, height = HAND_CARD_HEIGHT) {
             CardHeader("✨", card.name)
-            CardType("Ability")
         }
     }
 }
