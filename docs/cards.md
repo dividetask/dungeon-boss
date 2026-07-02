@@ -145,6 +145,7 @@ room's level: `value = base + floor(increment × level)`.
 | `draw_on_death`          | boolean       | ❌  | Owner draws one room + one ability card per hero that dies here |
 | `room_aura`              | map           | ❌  | `{ match: {...}, amount: N }` — +N to every other matching room |
 | `tags`                   | array<string> | ❌  | Classification tags                                          |
+| `start_in_discard`       | integer ≥ 0   | ❌  | How many of this card's copies begin in the build deck's **discard** pile (enter play only after a reshuffle); default 0. Basic rooms seed **half** their copies; advanced rooms always start fully in discard (engine-handled). |
 | `advanced`/`copies`      | bool/int      | ❌  | `advanced` set from the `advanced_rooms` section; `copies` defaults to 1 |
 
 Poison is always unreducible. `room_resist` applies to the room's own damage

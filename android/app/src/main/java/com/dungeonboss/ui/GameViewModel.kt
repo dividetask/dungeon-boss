@@ -51,11 +51,6 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     /** The autosave file (internal storage), so a game survives an app kill/reboot. */
     private val saveFile: File get() = File(getApplication<Application>().filesDir, SAVE_FILE)
 
-    init {
-        // Resume the last game if one was saved; otherwise the start screen shows.
-        restoreIfSaved()
-    }
-
     private fun loadLibrary(): CardLibrary =
         getApplication<Application>().assets.open(CARDS_ASSET).use { CardLibrary.load(it) }
 

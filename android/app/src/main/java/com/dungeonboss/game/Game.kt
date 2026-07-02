@@ -46,13 +46,23 @@ class Game(
     val players: List<Player> = playerNames.map { Player(it) }
 
     val bossDeck: Deck<Boss> = Deck(library.bosses, rng).shuffle()
-    // Basic and advanced rooms share one build deck. Advanced rooms seed the
-    // discard pile so they can't be in an opening hand; they enter circulation
-    // only after the first reshuffle.
-    val roomDeck: Deck<BuildCard> =
-        Deck<BuildCard>(library.rooms, rng).shuffle().also { deck ->
+    // Basic and advanced rooms share one build deck. Each basic room may seed
+    // some of its copies into the discard pile via `start_in_discard` (so they
+    // only enter play after a reshuffle); the rest form the draw pile. Advanced
+    // rooms always seed the discard pile (they can't be in an opening hand).
+    val roomDeck: Deck<BuildCard> = run {
+        val draw = mutableListOf<BuildCard>()
+        val seeded = mutableListOf<BuildCard>()
+        library.rooms.groupBy { it.id }.values.forEach { copies ->
+            val n = copies.first().startInDiscard.coerceIn(0, copies.size)
+            seeded.addAll(copies.take(n))
+            draw.addAll(copies.drop(n))
+        }
+        Deck<BuildCard>(draw, rng).shuffle().also { deck ->
+            seeded.forEach { deck.discard(it) }
             library.advancedRooms.forEach { deck.discard(it) }
         }
+    }
     val heroDeck: Deck<Hero> = Deck(library.heroes, rng).shuffle()
     val abilityDeck: Deck<AbilityCard> = Deck(library.abilityCards, rng).shuffle()
 

@@ -42,6 +42,12 @@
 #                            OTHER room in the dungeon that matches the selector
 #                            (selector dims: type / bait / tag)
 #   tags                     classification tags (lowercased, optional)
+#   start_in_discard         how many of this card's copies begin the game in the
+#                            build deck's DISCARD pile instead of the draw pile,
+#                            so they only enter play after a reshuffle (default 0).
+#                            Basic rooms seed half their copies here. Advanced
+#                            rooms always start fully in the discard (handled by
+#                            the engine), so they don't need this field.
 #
 # A room's level starts at 0. It rises by 1 when grows_on_death triggers, and
 # by 1 (basic) / 2 (advanced) when a room card is spent to upgrade it during the
@@ -57,6 +63,7 @@ rooms:
     lead_damage: 3
     lead_damage_increment: 1
     tags: [goblin, monstrous_humanoid]
+    start_in_discard: 2
     copies: 4
 
   - id: room_fireball
@@ -69,6 +76,7 @@ rooms:
     damage_all: 3
     damage_all_increment: 1
     tags: [arcane]
+    start_in_discard: 2
     copies: 4
 
   - id: room_skeletons
@@ -79,6 +87,7 @@ rooms:
     lead_damage: 3
     lead_damage_increment: 1
     tags: [undead]
+    start_in_discard: 2
     copies: 4
 
   - id: room_pit
@@ -90,6 +99,7 @@ rooms:
     lead_damage_increment: 0
     damage_all: 3
     damage_all_increment: 1
+    start_in_discard: 2
     copies: 4
 
   # --- Growth rooms (basic, 4 damage, +1 per level, grow on death) ---
@@ -102,6 +112,7 @@ rooms:
     lead_damage_increment: 1
     grows_on_death: true
     tags: [hobgoblin, monstrous_humanoid]
+    start_in_discard: 2
     copies: 4
 
   - id: room_succubus
@@ -112,6 +123,7 @@ rooms:
     lead_damage: 4
     lead_damage_increment: 1
     grows_on_death: true
+    start_in_discard: 2
     copies: 4
 
   - id: room_zombies
@@ -123,6 +135,7 @@ rooms:
     lead_damage_increment: 1
     grows_on_death: true
     tags: [undead]
+    start_in_discard: 2
     copies: 4
 
   - id: room_mimic
@@ -133,6 +146,7 @@ rooms:
     lead_damage: 4
     lead_damage_increment: 1
     grows_on_death: true
+    start_in_discard: 2
     copies: 4
 
   # --- Draw rooms (basic, two bait icons, draw one of each card on death) ---
@@ -144,6 +158,7 @@ rooms:
     lead_damage: 4
     lead_damage_increment: 1
     draw_on_death: true
+    start_in_discard: 2
     copies: 4
 
   - id: room_soul_leach
@@ -157,6 +172,7 @@ rooms:
     damage_all_increment: 1
     draw_on_death: true
     tags: [arcane]
+    start_in_discard: 2
     copies: 4
 
   - id: room_wyvern
@@ -167,6 +183,7 @@ rooms:
     lead_damage: 3
     lead_damage_increment: 1
     draw_on_death: true
+    start_in_discard: 2
     copies: 4
 
   - id: room_shade
@@ -178,6 +195,7 @@ rooms:
     lead_damage_increment: 1
     draw_on_death: true
     tags: [undead]
+    start_in_discard: 2
     copies: 4
 
   # --- Trap rooms with crawl-time discard boost (basic) ---
@@ -192,6 +210,7 @@ rooms:
     damage_all_increment: 1
     discard_all_damage: 2
     tags: [undead]
+    start_in_discard: 2
     copies: 4
 
   - id: room_power_word
@@ -205,6 +224,7 @@ rooms:
     damage_all_increment: 1
     discard_all_damage: 2
     tags: [arcane]
+    start_in_discard: 2
     copies: 4
 
   # --- Poison / delayed traps (now basic) ---
@@ -217,6 +237,7 @@ rooms:
     lead_damage_increment: 1
     poison_damage: 8
     poison_persists: false
+    start_in_discard: 2
     copies: 4
 
   - id: room_poison_gas
@@ -230,6 +251,7 @@ rooms:
     damage_all_increment: 1
     poison_damage: 1
     poison_persists: true
+    start_in_discard: 2
     copies: 4
 
 advanced_rooms:

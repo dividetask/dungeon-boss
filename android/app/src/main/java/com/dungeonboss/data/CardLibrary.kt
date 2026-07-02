@@ -93,6 +93,7 @@ class CardLibrary(
             description = c["description"]?.toString() ?: "",
             tags = tagsOf(c["tags"]),
             advanced = (c["advanced"] as? Boolean) ?: advanced,
+            startInDiscard = intOf(c["start_in_discard"]),
             abilityText = c["ability_text"]?.toString() ?: ""
         )
 

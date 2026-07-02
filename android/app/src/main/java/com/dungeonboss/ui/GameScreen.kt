@@ -194,9 +194,20 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                 }
 
                 if (game == null) {
+                    val hasSave = vm.hasSavedGame()
+                    if (hasSave) {
+                        Button(
+                            onClick = { vm.restoreIfSaved() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
+                        ) {
+                            Text("Resume game", color = Color.White)
+                        }
+                    }
                     Button(
                         onClick = { vm.newGame(playerCount) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (hasSave) Palette.SubText else Palette.Accent
+                        )
                     ) {
                         Text("New game", color = Color.White)
                     }
