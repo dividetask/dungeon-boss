@@ -427,23 +427,12 @@ fun HeroChip(name: String, hp: Int, maxHp: Int, dead: Boolean, fled: Boolean = f
 }
 
 /**
- * A small "L{n}" level pill. The colour deepens with level so a higher-level
- * (tougher) hero stands out at a glance, while the number always states the exact
- * level. Heroes are level 1 at minimum.
+ * A small "L{n}" level label — plain blue text (no box), gold once a hero is a
+ * battle-hardened veteran (L4+) so higher levels still stand out. Heroes are
+ * level 1 at minimum.
  */
 @Composable
 fun LevelBadge(level: Int) {
-    val bg = when {
-        level >= 4 -> Color(0xFFC79A2E) // gold — a battle-hardened veteran
-        level >= 2 -> Palette.Accent    // blue — has levelled up
-        else -> Palette.SubText         // grey — base (level 1)
-    }
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(5.dp))
-            .background(bg)
-            .padding(horizontal = 4.dp, vertical = 1.dp)
-    ) {
-        Text("L$level", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-    }
+    val color = if (level >= 4) Color(0xFFC79A2E) else Palette.Accent
+    Text("L$level", color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold)
 }
