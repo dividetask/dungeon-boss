@@ -34,7 +34,7 @@
 > Task :app:writeDebugSigningConfigVersions UP-TO-DATE
 
 > Task :app:compileDebugKotlin
-w: file:///home/brett/Projects/dungeon-boss/android/app/src/main/java/com/dungeonboss/ui/GameScreen.kt:608:26 Condition is always 'true'.
+w: file:///home/brett/Projects/dungeon-boss/android/app/src/main/java/com/dungeonboss/ui/GameScreen.kt:629:26 Condition is always 'true'.
 
 > Task :app:compileDebugJavaWithJavac NO-SOURCE
 > Task :app:dexBuilderDebug
