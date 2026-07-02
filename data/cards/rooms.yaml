@@ -105,12 +105,15 @@ rooms:
     copies: 4
 
   # --- Growth rooms (basic, 4 damage, +1 per level, grow on death) ---
+  # Lower base (3) than the arcane/undead growers: glory has no bait reducer, so
+  # this is only soft-countered (the Barbarian it lures halves it), unlike
+  # Succubus/Zombies which their lured hero zeroes.
   - id: room_champion
     name: Hobgoblin Champion
     type: monster
     advanced: false
     bait: { glory: 1 }
-    lead_damage: 4
+    lead_damage: 3
     lead_damage_increment: 1
     grows_on_death: true
     tags: [hobgoblin, monstrous_humanoid]
@@ -137,12 +140,15 @@ rooms:
     tags: [undead]
     copies: 4
 
+  # Lowest base (2) of the growers: riches lures the Rogue, who only reduces
+  # traps, so this monster is completely uncounterable (full damage vs everyone,
+  # including its own lure) — its low base pays for that reliability.
   - id: room_mimic
     name: Mimic
     type: monster
     advanced: false
     bait: { riches: 1 }
-    lead_damage: 4
+    lead_damage: 2
     lead_damage_increment: 1
     grows_on_death: true
     copies: 4
