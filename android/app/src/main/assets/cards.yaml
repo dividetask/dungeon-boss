@@ -173,12 +173,15 @@ rooms:
     tags: [hobgoblin, monstrous_humanoid]
     copies: 4
 
+  # Highest base (5) of the growers: arcane lures the Mage, whose -4 arcane aura
+  # zeroes a 4-damage hit — the extra point keeps it from being dead weight
+  # against the very hero it attracts.
   - id: room_succubus
     name: Succubus
     type: monster
     advanced: false
     bait: { arcane: 1 }
-    lead_damage: 4
+    lead_damage: 5
     lead_damage_increment: 1
     grows_on_death: true
     copies: 4
@@ -389,10 +392,11 @@ advanced_rooms:
     tags: [undead]
     copies: 4
 
-  # Wright: a drainer — raises reinforcements. It draws a room + ability card per
-  # hero that dies here (card advantage) instead of snowballing its own level.
+  # Wight: a drainer — raises the slain as reinforcements. It draws a room +
+  # ability card per hero that dies here (card advantage) rather than snowballing
+  # its own level. (Internal id stays adv_wright; only the display name changed.)
   - id: adv_wright
-    name: Wright
+    name: Wight
     type: monster
     advanced: true
     bait: { undead: 1 }
