@@ -277,7 +277,7 @@ snowball that picks off the weakest first), **Wight** (lead 6, `draw_on_death` â
 a card-advantage drainer), **Mirror**
 (`lead_max_party_hp` â€” an unreducible lead hit for the party's highest max HP),
 **Black Tentacles** (`damage_all` 1 + `damage_rear` 5), **Maze** (`damage_all` 4,
-`poison_ticks` 3), **Trap Makers Workshop** / **Hobgoblin Beastmaster** (`room_aura` +2 to
+`poison_ticks` 3), **Trap Maker's Workshop** / **Hobgoblin Beastmaster** (`room_aura` +2 to
 other traps / creatures).
 
 Cursed Ring moved to the **basic** rooms (arcane+riches trap, lead 2, can't

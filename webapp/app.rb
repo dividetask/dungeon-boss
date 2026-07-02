@@ -41,7 +41,7 @@ class DungeonBossApp < Sinatra::Base
 
     # Total bonus damage a room gets during a crawl beyond its own printed
     # damage: the boss's room aura (Goblin Chieftain / Kobold / Necromancer) plus
-    # dungeon room auras (Hobgoblin Beastmaster / Trap Makers). 0 when none applies.
+    # dungeon room auras (Hobgoblin Beastmaster / Trap Maker's). 0 when none applies.
     def room_bonus_total(player, room)
       dungeon = player.dungeon
       points = applicable_points(player)

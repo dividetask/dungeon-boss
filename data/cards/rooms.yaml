@@ -396,7 +396,7 @@ advanced_rooms:
 
   # --- Aura rooms (re-added): buff other traps / creatures ---
   - id: adv_trap_makers_workshop
-    name: Trap Makers Workshop
+    name: Trap Maker's Workshop
     type: trap
     advanced: true
     bait: { riches: 1 }

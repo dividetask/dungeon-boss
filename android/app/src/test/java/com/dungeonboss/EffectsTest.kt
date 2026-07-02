@@ -83,7 +83,7 @@ class EffectsTest {
 
     @Test
     fun roomAuraBoostsOtherMatchingRooms() {
-        // Trap Makers Workshop: +2 to OTHER trap rooms (never itself / the boss).
+        // Trap Maker's Workshop: +2 to OTHER trap rooms (never itself / the boss).
         val trapMakers = room(lead = 0, type = "monster",
             aura = mapOf("match" to mapOf("type" to "trap"), "amount" to 2))
         val otherTrap = room(lead = 3, type = "trap")
