@@ -152,8 +152,9 @@ room's level: `value = base + floor(increment × level)`.
 basic room, with **ceil(N/2)** of those copies seeded into the build deck's
 **discard** pile (they enter play only after a reshuffle) and the rest in the
 draw pile — 2 players → 2 copies / 1 in discard, 3 → 3 / 2, 4 → 4 / 2. Advanced
-rooms always start fully in the discard. This scaling is engine-handled, so the
-per-card `start_in_discard` field no longer exists.
+rooms scale the same way (N players → N copies each) but always start fully in
+the discard. This scaling is engine-handled, so the per-card `start_in_discard`
+field no longer exists.
 
 Poison is always unreducible. `room_resist` applies to the room's own damage
 channels (not poison). A room's **level** starts at 0 and rises by 1 when

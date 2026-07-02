@@ -312,7 +312,7 @@ advanced_rooms:
     damage_filter: mage
     room_resist: true
     tags: [arcane]
-    copies: 2
+    copies: 4
 
   - id: adv_zealots
     name: Zealots
@@ -326,7 +326,7 @@ advanced_rooms:
     damage_filter: cleric
     room_resist: true
     tags: [undead]
-    copies: 2
+    copies: 4
 
   - id: adv_false_trigger
     name: False Trigger
@@ -339,7 +339,7 @@ advanced_rooms:
     damage_all_increment: 1
     damage_filter: rogue
     room_resist: true
-    copies: 2
+    copies: 4
 
   # --- Unreducible / unhalvable growth bruisers ---
   - id: adv_gladiator
@@ -352,7 +352,7 @@ advanced_rooms:
     grows_on_death: true
     room_resist: true
     tags: [monstrous_humanoid]
-    copies: 2
+    copies: 4
 
   - id: adv_troll
     name: Troll
@@ -363,7 +363,7 @@ advanced_rooms:
     lead_damage_increment: 4
     grows_on_death: true
     tags: [monstrous_humanoid]
-    copies: 2
+    copies: 4
 
   # Shadow: an unreducible grower — no hero reduction touches it, and every kill
   # here raises its level, so it snowballs into an unblockable bruiser.
@@ -377,7 +377,7 @@ advanced_rooms:
     grows_on_death: true
     room_resist: true
     tags: [undead]
-    copies: 2
+    copies: 4
 
   # Wright: a drainer — raises reinforcements. It draws a room + ability card per
   # hero that dies here (card advantage) instead of snowballing its own level.
@@ -390,7 +390,7 @@ advanced_rooms:
     lead_damage_increment: 1
     draw_on_death: true
     tags: [undead]
-    copies: 2
+    copies: 4
 
   # --- Mirror: reflects the party's toughest hero — deals damage equal to the
   #     highest max HP in the party as an unreducible lead hit (cascades). ---
@@ -403,7 +403,7 @@ advanced_rooms:
     lead_damage_increment: 0
     lead_max_party_hp: true
     room_resist: true
-    copies: 2
+    copies: 4
 
   # --- Black Tentacles: chip everyone, smash the most injured ---
   - id: adv_black_tentacles
@@ -418,7 +418,7 @@ advanced_rooms:
     damage_rear: 5
     damage_rear_increment: 1
     tags: [arcane]
-    copies: 2
+    copies: 4
 
   # --- Maze: poison resolves 3x here (helps when a poison trap precedes it) ---
   - id: adv_maze
@@ -432,7 +432,7 @@ advanced_rooms:
     damage_all_increment: 1
     poison_ticks: 3
     tags: [arcane]
-    copies: 2
+    copies: 4
 
   # --- Aura rooms: buff other traps / creatures ---
   - id: adv_trap_makers_workshop
@@ -445,7 +445,7 @@ advanced_rooms:
     room_aura:
       match: { type: trap }
       amount: 2
-    copies: 2
+    copies: 4
 
   - id: adv_beast_tamer
     name: Hobgoblin Beastmaster
@@ -458,7 +458,7 @@ advanced_rooms:
       match: { type: creature }
       amount: 2
     tags: [hobgoblin, monstrous_humanoid]
-    copies: 2
+    copies: 4
 
 # ===== heroes (from data/cards/heroes.yaml) =====
 # Data-driven heroes (see docs/cards.md). Level starts at floor(round/4)+1 (min 1),

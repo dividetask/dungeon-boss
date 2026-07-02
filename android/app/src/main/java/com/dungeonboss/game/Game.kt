@@ -53,8 +53,10 @@ class Game(
     //   2 players → 2 copies, 1 in discard
     //   3 players → 3 copies, 2 in discard
     //   4 players → 4 copies, 2 in discard
-    // Advanced rooms always seed the discard pile (they can't be in an opening
-    // hand); the card library holds enough copies of each room to cover 4 players.
+    // Advanced rooms also scale with the player count — N players → N copies of
+    // each advanced room — but always seed the discard pile (they can't be in an
+    // opening hand). The card library holds enough copies of every room to cover
+    // 4 players.
     val roomDeck: Deck<BuildCard> = run {
         val copiesPerCard = players.size
         val toDiscard = (players.size + 1) / 2   // ceil(N/2)
@@ -68,7 +70,9 @@ class Game(
         }
         Deck<BuildCard>(draw, rng).shuffle().also { deck ->
             seeded.forEach { deck.discard(it) }
-            library.advancedRooms.forEach { deck.discard(it) }
+            library.advancedRooms.groupBy { it.id }.values.forEach { copies ->
+                copies.take(copiesPerCard).forEach { deck.discard(it) }
+            }
         }
     }
     val heroDeck: Deck<Hero> = Deck(library.heroes, rng).shuffle()
