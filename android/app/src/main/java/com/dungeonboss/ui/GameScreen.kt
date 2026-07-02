@@ -1285,7 +1285,10 @@ private fun AdvanceBar(
                 if (pendingAbility != null) {
                     OutlinedButton(onClick = onCancelAbility) { Text("Cancel", fontSize = 13.sp) }
                 }
-                if (game.crawling() && game.canUndoPlacement()) {
+                // canUndoPlacement() already gates on stage (CRAWLING or QUIET), so
+                // don't add a crawling-only check — that hid the button on a quiet
+                // round, where you can still take back the room you just placed.
+                if (game.canUndoPlacement()) {
                     OutlinedButton(onClick = onUndoPlacement) { Text("↶ Undo room", fontSize = 13.sp) }
                 }
                 if (game.canUndoAbility()) {
