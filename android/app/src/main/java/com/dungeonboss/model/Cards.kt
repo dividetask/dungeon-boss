@@ -53,6 +53,10 @@ interface Encounter {
     /** null = normal, false = cannot be halved (Barbarian), true = cannot be reduced. */
     val roomResist: Boolean? get() = null
 
+    /** Mirror: this room's lead damage equals the toughest party member's max HP
+     *  (a lead hit on the highest-current-HP hero for the party's biggest max HP). */
+    val leadMaxPartyHp: Boolean get() = false
+
     /** Per discarded card during the crawl: +N to lead / all damage (temporary). */
     val discardLeadDamage: Int get() = 0
     val discardAllDamage: Int get() = 0
@@ -132,6 +136,7 @@ class Room(
     override val rearIncrement: Double = 0.0,
     override val damageFilter: String? = null,
     override val roomResist: Boolean? = null,
+    override val leadMaxPartyHp: Boolean = false,
     override val discardLeadDamage: Int = 0,
     override val discardAllDamage: Int = 0,
     override val poisonDamage: Int = 0,
@@ -234,6 +239,7 @@ class PlacedRoom(val baseRoom: Room) : Encounter {
     override val rearIncrement get() = baseRoom.rearIncrement
     override val damageFilter get() = baseRoom.damageFilter
     override val roomResist get() = baseRoom.roomResist
+    override val leadMaxPartyHp get() = baseRoom.leadMaxPartyHp
     override val discardLeadDamage get() = baseRoom.discardLeadDamage
     override val discardAllDamage get() = baseRoom.discardAllDamage
     override val poisonDamage get() = baseRoom.poisonDamage

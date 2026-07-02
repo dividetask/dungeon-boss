@@ -44,7 +44,7 @@ the bait. The current classification tags:
 
 | Tag | On | Boss that keys off it |
 |-----|----|-----------------------|
-| `arcane` | the six arcane **trap** rooms (Fireball, Power Word, Soul Leach, Antimagic, Black Tentacles, Maze) | **Lich** (`type: trap` + `tag: arcane`) |
+| `arcane` | the six arcane **trap** rooms (Fireball, Power Word, Cursed Ring, Antimagic, Black Tentacles, Maze) | **Lich** (`type: trap` + `tag: arcane`) |
 | `undead` | the six undead **creatures** (Skeletons, Zombies, Shade, Zealots, Shadow, Wright) — also on the Undead Hands trap | **Necromancer** (`type: creature` + `tag: undead`) |
 | `monstrous_humanoid` | the humanoid glory creatures (Goblins, Hobgoblin Champion, Gladiator, Troll, Hobgoblin Beastmaster) | **Oni** (+4 flat) |
 | `goblin` / `hobgoblin` | Goblins / the two Hobgoblin rooms | **Goblin Chieftain** (+1/point) |
@@ -136,6 +136,7 @@ room's level: `value = base + floor(increment × level)`.
 | `damage_rear_increment`  | float         | ❌  | Extra rear damage per level                                   |
 | `damage_filter`          | string        | ❌  | `mage`/`cleric`/`rogue`/`barbarian` — gates `damage_all` to that class |
 | `room_resist`            | bool/null     | ❌  | `null` normal, `false` cannot be halved (Barbarian), `true` cannot be reduced |
+| `lead_max_party_hp`      | boolean       | ❌  | **Mirror**: this room's lead damage equals the **highest max HP** in the party (a lead hit for that much; pair with `room_resist: true` to make it unreducible) |
 | `discard_lead_damage`    | integer       | ❌  | Per card discarded during the crawl: +N lead damage (stacks; temporary) |
 | `discard_all_damage`     | integer       | ❌  | Same, but +N all-damage                                       |
 | `poison_damage`          | integer       | ❌  | Damage to every hero this room damaged, in a later room (unreducible) |
@@ -264,10 +265,15 @@ after the first reshuffle.
 The twelve advanced rooms (×2 each): **Antimagic Room** (`damage_all` 4, filter
 mage, can't reduce), **Zealots** (filter cleric), **False Trigger** (filter
 rogue), **Gladiator** (lead 4, grows, can't reduce), **Troll** (lead 10 +4/level,
-grows), **Shadow** / **Wright** (lead 6, grows, can't be halved), **Cursed Ring**
-(lead 2, can't reduce, poison 2/room), **Black Tentacles** (`damage_all` 1 +
-`damage_rear` 5), **Maze** (`damage_all` 4, `poison_ticks` 3), **Trap Makers
-Workshop** / **Beast Tamer** (`room_aura` +2 to other traps / creatures).
+grows), **Shadow** / **Wright** (lead 6, grows, can't be halved), **Mirror**
+(`lead_max_party_hp` — an unreducible lead hit for the party's highest max HP),
+**Black Tentacles** (`damage_all` 1 + `damage_rear` 5), **Maze** (`damage_all` 4,
+`poison_ticks` 3), **Trap Makers Workshop** / **Beast Tamer** (`room_aura` +2 to
+other traps / creatures).
+
+Cursed Ring moved to the **basic** rooms (arcane+riches trap, lead 2, can't
+reduce, poison 2/room); Soul Leach was removed, and Pit gained `draw_on_death` to
+keep four draw-on-death basics.
 
 A `room_aura` never affects the granting room or the boss; it applies to every
 other room that matches. The boss `room_bonuses` and a room `room_aura` add to a

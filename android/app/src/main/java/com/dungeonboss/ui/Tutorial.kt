@@ -468,7 +468,7 @@ private fun buildTutorial(lib: CardLibrary): List<TutorialStep> {
     )
 
     // 16 — resist and poison
-    val nasty = dungeon("boss_medusa", listOf("adv_gladiator", "room_floor_spike", "adv_cursed_ring"))
+    val nasty = dungeon("boss_medusa", listOf("adv_gladiator", "room_floor_spike", "room_cursed_ring"))
     val g15 = newGame().also { it.players[0].dungeon = nasty }
     val tough = Party(listOf(hero("hero_barbarian"), hero("hero_cleric")))
     steps += TutorialStep(

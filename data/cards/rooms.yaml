@@ -99,6 +99,7 @@ rooms:
     lead_damage_increment: 0
     damage_all: 3
     damage_all_increment: 1
+    draw_on_death: true
     start_in_discard: 2
     copies: 4
 
@@ -161,16 +162,16 @@ rooms:
     start_in_discard: 2
     copies: 4
 
-  - id: room_soul_leach
-    name: Soul Leach
+  - id: room_cursed_ring
+    name: Cursed Ring
     type: trap
     advanced: false
-    bait: { arcane: 1, riches: 1 }
-    lead_damage: 0
-    lead_damage_increment: 0
-    damage_all: 2
-    damage_all_increment: 1
-    draw_on_death: true
+    bait: { riches: 1, arcane: 1 }
+    lead_damage: 2
+    lead_damage_increment: 1
+    room_resist: true
+    poison_damage: 2
+    poison_persists: true
     tags: [arcane]
     start_in_discard: 2
     copies: 4
@@ -345,17 +346,17 @@ advanced_rooms:
     tags: [undead]
     copies: 2
 
-  # --- Cursed Ring: unreducible + persisting poison, grows per level ---
-  - id: adv_cursed_ring
-    name: Cursed Ring
+  # --- Mirror: reflects the party's toughest hero — deals damage equal to the
+  #     highest max HP in the party as an unreducible lead hit (cascades). ---
+  - id: adv_mirror
+    name: Mirror
     type: trap
     advanced: true
-    bait: { riches: 1 }
-    lead_damage: 2
-    lead_damage_increment: 1
+    bait: { glory: 1, arcane: 1 }
+    lead_damage: 0
+    lead_damage_increment: 0
+    lead_max_party_hp: true
     room_resist: true
-    poison_damage: 2
-    poison_persists: true
     copies: 2
 
   # --- Black Tentacles: chip everyone, smash the most injured ---

@@ -279,6 +279,8 @@ class CrawlResolver
     lead = enc.lead
     all = enc.all
     rear = enc.rear
+    # Mirror: lead damage = the toughest alive member's max HP.
+    lead = (@alive.map(&:max_hp).max || 0) if enc.def_["lead_max_party_hp"]
     ext =
       if enc.boss?
         @boss_effect ? @boss_effect.self_bonus(@boss_bonus) : 0
@@ -412,7 +414,7 @@ def primary_channel(rdef)
 end
 
 # --- 2) Trap-heavy vs monster-heavy dungeons vs several parties -------------
-TRAP_DUNGEON    = %w[room_fireball room_pit room_poison_gas room_soul_leach room_power_word].freeze
+TRAP_DUNGEON    = %w[room_fireball room_pit room_poison_gas room_cursed_ring room_power_word].freeze
 MONSTER_DUNGEON = %w[room_goblins room_skeletons room_champion room_succubus room_mimic].freeze
 MIXED_DUNGEON   = %w[room_fireball room_skeletons room_poison_gas room_champion room_pit].freeze
 
@@ -465,7 +467,7 @@ end
 # reflecting that they just pick good rooms rather than build around a theme.
 GENERIC_BRUISERS = %w[room_champion room_succubus room_mimic adv_troll room_zombies].freeze
 BOSS_DUNGEONS = {
-  "boss_lich"             => %w[room_fireball room_power_word room_soul_leach adv_maze adv_black_tentacles],
+  "boss_lich"             => %w[room_fireball room_power_word room_cursed_ring adv_maze adv_black_tentacles],
   "boss_necromancer"      => %w[room_skeletons room_zombies room_shade adv_shadow adv_wright],
   "boss_oni"              => %w[room_goblins room_champion adv_gladiator adv_troll adv_beast_tamer],
   "boss_goblin_chieftain" => %w[room_goblins room_champion adv_beast_tamer room_champion room_goblins],

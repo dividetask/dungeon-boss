@@ -187,6 +187,11 @@ object PartyCrawlResolver {
             var all = encounter.damageAll
             var rear = encounter.damageRear
 
+            // Mirror: its lead damage is the toughest party member's max HP — a
+            // lead hit (on the highest-current-HP hero) for the party's biggest
+            // max HP, cascading its overkill like any lead hit.
+            if (encounter.leadMaxPartyHp) lead = alive.maxOfOrNull { it.maxHp } ?: 0
+
             val bossEffect = BossEffect.forBoss(dungeon.boss)
             val ext = if (encounter === dungeon.boss) {
                 bossEffect.selfBonus(bossBonus) + mods.bonus(roomIndex)
