@@ -164,8 +164,8 @@ hero added) by editing data alone.
 | `name`           | string        | Display name                                                  |
 | `icon`           | string        | Display icon (emoji or asset key)                            |
 | `preferred_bait` | bait          | One of the four bait types — the hero's lure ("Bait")        |
-| `starting_hp`    | integer > 0   | Health at level 0                                            |
-| `starting_courage` | integer ≥ 1 | Courage at level 0 (per-class base; default 1)             |
+| `starting_hp`    | integer > 0   | Health at level 1 (the base)                                 |
+| `starting_courage` | integer ≥ 1 | Courage at level 1 (per-class base; default 1)             |
 | `hp_level_increment` | float     | HP gained per level (floored — see formula); may be < 1      |
 | `self_damage_multiplier` | float | Multiplies the damage **this hero** personally takes (self-scope) |
 | `party_damage_reduction` | integer ≥ 0 | Flat party-wide damage reduction at level 0 (the aura)   |
@@ -178,22 +178,26 @@ hero added) by editing data alone.
 
 #### Levelling and derived stats
 
-A hero carries a **level** that starts at `floor(round / 4)` when it arrives,
-gains **+1 every time it survives a crawl**, and persists until the hero dies
-(each hero tracks its own level). From the level, three stats are derived:
+A hero carries a **level** that starts at `floor(round / 4) + 1` when it arrives
+— so the **minimum level is 1, never 0** — gains **+1 every time it survives a
+crawl**, and persists until the hero dies (each hero tracks its own level). The
+three derived stats use **`(level - 1)`**, so a **level-1 hero has its base
+stats** and each level beyond adds one increment:
 
 ```
-max_hp           = starting_hp + floor(level * hp_level_increment)
-courage          = starting_courage + level           # per-class base, +1 per level
-party_reduction  = party_damage_reduction + floor(level * party_damage_reduction_level_increment)
+max_hp           = starting_hp + floor((level - 1) * hp_level_increment)
+courage          = starting_courage + (level - 1)      # base at L1, +1 per level after
+party_reduction  = party_damage_reduction + floor((level - 1) * party_damage_reduction_level_increment)
 ```
 
-Because `hp_level_increment` is a float that is **floored after multiplying by
-level**, classes with a small increment (e.g. the Mage's `0.05`) gain HP only
-occasionally, while a Barbarian (`2`) gains HP every level. HP itself is always
-an **integer**; only the increments are floats. **Courage** starts at the
-per-class `starting_courage` and rises by **1 every level**. Heroes are restored
-to their current (levelled) **full HP between crawls**.
+So e.g. the Mage's party reduction (base `4`, `+2`/level) is `4` at L1, `6` at
+L2, `8` at L3 — i.e. `level * 2 + 2`. Because `hp_level_increment` is a float
+**floored after multiplying by `(level - 1)`**, classes with a small increment
+(e.g. the Mage's `0.05`) gain HP only occasionally, while a Barbarian (`2`) gains
+HP every level. HP itself is always an **integer**; only the increments are
+floats. **Courage** is the per-class `starting_courage` at L1 and rises by **1
+every level** after. Heroes are restored to their current (levelled) **full HP
+between crawls**.
 
 #### How the damage fields combine
 

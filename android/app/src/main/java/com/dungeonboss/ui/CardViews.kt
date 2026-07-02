@@ -314,7 +314,10 @@ fun HeroCardView(hero: Hero, modifier: Modifier = Modifier) {
     CardFrame(Palette.HeroBg, Palette.HeroBorder, modifier) {
         CardArtGlyph(hero.icon.ifEmpty { CardArt.heroArt(hero.id) })
         CardTitle(hero.name)
-        CardType(if (hero.level > 0) "Hero · Lv ${hero.level}" else "Hero")
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            CardType("Hero")
+            LevelBadge(hero.level)
+        }
         StatRow(
             { Text("❤ ${hero.maxHp}", color = Palette.Health, fontWeight = FontWeight.Bold, fontSize = 13.sp) },
             {
@@ -420,5 +423,27 @@ fun HeroChip(name: String, hp: Int, maxHp: Int, dead: Boolean, fled: Boolean = f
             color = Color.White,
             fontSize = 12.sp
         )
+    }
+}
+
+/**
+ * A small "L{n}" level pill. The colour deepens with level so a higher-level
+ * (tougher) hero stands out at a glance, while the number always states the exact
+ * level. Heroes are level 1 at minimum.
+ */
+@Composable
+fun LevelBadge(level: Int) {
+    val bg = when {
+        level >= 4 -> Color(0xFFC79A2E) // gold — a battle-hardened veteran
+        level >= 2 -> Palette.Accent    // blue — has levelled up
+        else -> Palette.SubText         // grey — base (level 1)
+    }
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(5.dp))
+            .background(bg)
+            .padding(horizontal = 4.dp, vertical = 1.dp)
+    ) {
+        Text("L$level", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
     }
 }

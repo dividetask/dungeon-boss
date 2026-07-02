@@ -822,6 +822,7 @@ private fun TownHeroChip(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(CardArt.heroArt(hero.id), fontSize = 16.sp)
             Text(hero.name + if (count > 1) " ×$count" else "", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            LevelBadge(hero.level)
         }
         TargetLine(lure, Palette.SubText, timidGlow)
     }
@@ -1125,6 +1126,7 @@ private fun IncomingParty(party: Party) {
                 Text(CardArt.heroArt(hero.id), fontSize = 15.sp)
                 Text(hero.name + if (group.size > 1) " ×${group.size}" else "",
                     fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                LevelBadge(hero.level)
             }
         }
     }
@@ -1372,8 +1374,8 @@ internal fun CardDetailDialog(card: Any, onDismiss: () -> Unit) {
                         DetailBody(card.text)
                     }
                     is Hero -> {
-                        DetailHeader(card.icon.ifEmpty { CardArt.heroArt(card.id) }, card.name,
-                            if (card.level > 0) "Hero · Lv ${card.level}" else "Hero")
+                        DetailHeader(card.icon.ifEmpty { CardArt.heroArt(card.id) }, card.name, "Hero")
+                        DetailStat("Level", card.level.toString())
                         DetailStat("HP", card.maxHp.toString())
                         DetailStat("Courage", card.courage.toString())
                         DetailStat("Preferred bait", CardArt.baitEmoji[card.preferredBait].orEmpty())

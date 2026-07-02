@@ -1,12 +1,13 @@
 # Heroes — wandering adventurers lured into dungeons.
 #
-# The hero's mechanical behaviour is fully data-driven (no per-id code):
-#   max HP        = starting_hp + floor(level * hp_level_increment)
-#   courage       = starting_courage + level           (per-class base; +1 per level)
-#   party reduce  = party_damage_reduction + floor(level * party_damage_reduction_level_increment)
-# A hero's level starts at floor(round / 4) when it arrives, gains +1 each time it
-# survives a crawl, and persists until the hero dies. See docs/cards.md and
-# docs/phases.md. Bait types are exactly: glory, riches, undead, arcane.
+# The hero's mechanical behaviour is fully data-driven (no per-id code). The
+# derived stats use (level - 1), so a level-1 hero has its base stats:
+#   max HP        = starting_hp + floor((level - 1) * hp_level_increment)
+#   courage       = starting_courage + (level - 1)      (per-class base; +1 per level)
+#   party reduce  = party_damage_reduction + floor((level - 1) * party_damage_reduction_level_increment)
+# A hero's level starts at floor(round / 4) + 1 when it arrives (minimum 1, never
+# 0), gains +1 each time it survives a crawl, and persists until the hero dies.
+# See docs/cards.md and docs/phases.md. Bait types: glory, riches, undead, arcane.
 heroes:
   - id: hero_barbarian
     name: Barbarian

@@ -457,9 +457,10 @@ advanced_rooms:
     copies: 2
 
 # ===== heroes (from data/cards/heroes.yaml) =====
-# Data-driven heroes (see docs/cards.md). Level starts at floor(round/4), +1 per
-# survived crawl. maxHP = starting_hp + floor(level*hp_level_increment);
-# courage = starting_courage + level; party reduce = party_damage_reduction + floor(level*increment).
+# Data-driven heroes (see docs/cards.md). Level starts at floor(round/4)+1 (min 1),
+# +1 per survived crawl. Stats use (level-1) so level 1 = base:
+# maxHP = starting_hp + floor((level-1)*hp_level_increment);
+# courage = starting_courage + (level-1); party reduce = party_damage_reduction + floor((level-1)*increment).
 heroes:
   - id: hero_barbarian
     name: Barbarian

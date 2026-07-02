@@ -11,6 +11,9 @@ import com.dungeonboss.game.Decision
 import com.dungeonboss.game.Game
 import com.dungeonboss.game.LogicAgent
 import com.dungeonboss.game.Player
+import com.dungeonboss.model.Boss
+import com.dungeonboss.model.Encounter
+import com.dungeonboss.model.PlacedRoom
 
 /**
  * Holds the in-memory [Game] and exposes it to the composition. The Game mutates
@@ -88,7 +91,34 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         DebugLog.log("sendNextParty: next=${g.nextCrawl()?.let { "${it.second.displayName()}->${it.first.name}" }}")
         g.sendNextParty()
         sendCounter += 1
+        logCrawl(g)
         DebugLog.log("sendNextParty: after stage=${g.stage}")
+    }
+
+    /** Log the just-resolved crawl hit-by-hit so logs capture per-hit damage. */
+    private fun logCrawl(g: Game) {
+        val o = g.lastOutcomes.firstOrNull() ?: return
+        val r = o.result
+        DebugLog.log(
+            "crawl: ${o.party.displayName()} -> ${o.player.name}'s dungeon" +
+                (if (o.retreated) " [RETREATED]" else "") + " (boss +${o.bossBonus})"
+        )
+        if (r.log.isEmpty()) DebugLog.log("  (no damage dealt)")
+        r.log.forEach { s ->
+            DebugLog.log(
+                "  [${s.roomIndex}] ${encName(s.encounter)}: ${s.hero.name} " +
+                    "-${s.damage} -> ${s.healthAfter} hp" + if (s.died) "  ** DIED **" else ""
+            )
+        }
+        DebugLog.log(
+            "  => deaths=${r.deaths}, survivors=[${r.survivors.joinToString(", ") { it.name }}]"
+        )
+    }
+
+    private fun encName(e: Encounter): String = when (e) {
+        is PlacedRoom -> e.name
+        is Boss -> e.name
+        else -> e.type ?: "encounter"
     }
 
     /** Play an ability card from the human's hand on the current crawl (or quiet round). */

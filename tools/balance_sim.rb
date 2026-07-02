@@ -81,7 +81,7 @@ end
 # ---------------------------------------------------------------------------
 class Hero
   attr_reader :def_, :level
-  def initialize(defn, level: 0)
+  def initialize(defn, level: 1)
     @def_ = defn
     @level = level
   end
@@ -93,10 +93,12 @@ class Hero
   def bait_filter = @def_["damage_bait_filter"]
   def type_filter = @def_["damage_room_type_filter"]
 
-  def max_hp = (@def_["starting_hp"]) + ((@def_["hp_level_increment"] || 0) * @level).floor
+  # Stats use (level - 1), so a level-1 hero has its base stats (mirrors the game).
+  def bonus_levels = [@level - 1, 0].max
+  def max_hp = (@def_["starting_hp"]) + ((@def_["hp_level_increment"] || 0) * bonus_levels).floor
   def party_reduction
     (@def_["party_damage_reduction"] || 0) +
-      ((@def_["party_damage_reduction_level_increment"] || 0) * @level).floor
+      ((@def_["party_damage_reduction_level_increment"] || 0) * bonus_levels).floor
   end
 end
 
@@ -365,11 +367,11 @@ end
 # ===========================================================================
 DB = Cards.load
 
-def hero(id, level: 0) = Hero.new(DB[:heroes].fetch(id), level: level)
+def hero(id, level: 1) = Hero.new(DB[:heroes].fetch(id), level: level)
 def room(id, level: 0) = Encounter.new(DB[:rooms].fetch(id), level: level)
 def boss(id) = Encounter.new(DB[:bosses].fetch(id), boss: true)
 
-def party(*ids, level: 0) = ids.map { |i| hero(i, level: level) }
+def party(*ids, level: 1) = ids.map { |i| hero(i, level: level) }
 
 ALL_CLASSES = %w[hero_barbarian hero_rogue hero_cleric hero_mage].freeze
 
@@ -428,7 +430,7 @@ DUNGEONS = {
 }.freeze
 
 def archetype_experiment
-  [0, 4].each do |lvl|
+  [1, 5].each do |lvl|
     puts "\n## 2. Trap-heavy vs monster-heavy — rooms only, no boss (hero level #{lvl})"
     puts "   Cell = deaths / party size. Higher deaths = stronger dungeon.\n\n"
     printf("   %-28s %-14s %-14s %-14s\n", "party", *DUNGEONS.keys)
@@ -474,7 +476,7 @@ BOSS_DUNGEONS = {
 }.freeze
 
 # Game arc: (hero level, owner points) — early / mid / late play.
-ARC = [[0, 0], [2, 3], [4, 6]].freeze
+ARC = [[1, 0], [3, 3], [5, 6]].freeze
 
 # Fresh instances every call (growth mutates a room's level in place).
 def themed_dungeon(bid)
@@ -545,9 +547,9 @@ def trace_crawl(heroes, dungeon, boss_bonus: 0)
 end
 
 def trace_demo
-  puts "\n## 6. Damage trace (example) — 4-class party (L0) vs Oni glory-monster dungeon, 0 pts"
+  puts "\n## 6. Damage trace (example) — 4-class party (L1) vs Oni glory-monster dungeon, 0 pts"
   puts "   Every hit shown, incl. cascades. Use trace_crawl(...) for any matchup.\n\n"
-  trace_crawl(party(*ALL_CLASSES, level: 0), themed_dungeon("boss_oni"), boss_bonus: 0)
+  trace_crawl(party(*ALL_CLASSES, level: 1), themed_dungeon("boss_oni"), boss_bonus: 0)
 end
 
 report if __FILE__ == $PROGRAM_NAME
