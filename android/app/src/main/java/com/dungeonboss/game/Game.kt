@@ -46,17 +46,25 @@ class Game(
     val players: List<Player> = playerNames.map { Player(it) }
 
     val bossDeck: Deck<Boss> = Deck(library.bosses, rng).shuffle()
-    // Basic and advanced rooms share one build deck. Each basic room may seed
-    // some of its copies into the discard pile via `start_in_discard` (so they
-    // only enter play after a reshuffle); the rest form the draw pile. Advanced
-    // rooms always seed the discard pile (they can't be in an opening hand).
+    // Basic and advanced rooms share one build deck. The number of copies of each
+    // basic room scales with the player count: N players → N copies of every basic
+    // room, with ceil(N/2) of those copies seeded into the discard pile (so they
+    // only enter play after a reshuffle) and the rest forming the draw pile.
+    //   2 players → 2 copies, 1 in discard
+    //   3 players → 3 copies, 2 in discard
+    //   4 players → 4 copies, 2 in discard
+    // Advanced rooms always seed the discard pile (they can't be in an opening
+    // hand); the card library holds enough copies of each room to cover 4 players.
     val roomDeck: Deck<BuildCard> = run {
+        val copiesPerCard = players.size
+        val toDiscard = (players.size + 1) / 2   // ceil(N/2)
         val draw = mutableListOf<BuildCard>()
         val seeded = mutableListOf<BuildCard>()
         library.rooms.groupBy { it.id }.values.forEach { copies ->
-            val n = copies.first().startInDiscard.coerceIn(0, copies.size)
-            seeded.addAll(copies.take(n))
-            draw.addAll(copies.drop(n))
+            val used = copies.take(copiesPerCard)
+            val n = toDiscard.coerceIn(0, used.size)
+            seeded.addAll(used.take(n))
+            draw.addAll(used.drop(n))
         }
         Deck<BuildCard>(draw, rng).shuffle().also { deck ->
             seeded.forEach { deck.discard(it) }

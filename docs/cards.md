@@ -146,8 +146,14 @@ room's level: `value = base + floor(increment × level)`.
 | `draw_on_death`          | boolean       | ❌  | Owner draws one room + one ability card per hero that dies here |
 | `room_aura`              | map           | ❌  | `{ match: {...}, amount: N }` — +N to every other matching room |
 | `tags`                   | array<string> | ❌  | Classification tags                                          |
-| `start_in_discard`       | integer ≥ 0   | ❌  | How many of this card's copies begin in the build deck's **discard** pile (enter play only after a reshuffle); default 0. Basic rooms seed **half** their copies; advanced rooms always start fully in discard (engine-handled). |
-| `advanced`/`copies`      | bool/int      | ❌  | `advanced` set from the `advanced_rooms` section; `copies` defaults to 1 |
+| `advanced`/`copies`      | bool/int      | ❌  | `advanced` set from the `advanced_rooms` section; `copies` is the maximum pool (enough for 4 players) and defaults to 1 |
+
+**Copies scale with player count.** An **N-player** game uses **N copies** of each
+basic room, with **ceil(N/2)** of those copies seeded into the build deck's
+**discard** pile (they enter play only after a reshuffle) and the rest in the
+draw pile — 2 players → 2 copies / 1 in discard, 3 → 3 / 2, 4 → 4 / 2. Advanced
+rooms always start fully in the discard. This scaling is engine-handled, so the
+per-card `start_in_discard` field no longer exists.
 
 Poison is always unreducible. `room_resist` applies to the room's own damage
 channels (not poison). A room's **level** starts at 0 and rises by 1 when
@@ -265,7 +271,8 @@ after the first reshuffle.
 The twelve advanced rooms (×2 each): **Antimagic Room** (`damage_all` 4, filter
 mage, can't reduce), **Zealots** (filter cleric), **False Trigger** (filter
 rogue), **Gladiator** (lead 4, grows, can't reduce), **Troll** (lead 10 +4/level,
-grows), **Shadow** / **Wright** (lead 6, grows, can't be halved), **Mirror**
+grows), **Shadow** (lead 5, grows, can't be reduced — an unblockable snowball),
+**Wright** (lead 6, `draw_on_death` — a card-advantage drainer), **Mirror**
 (`lead_max_party_hp` — an unreducible lead hit for the party's highest max HP),
 **Black Tentacles** (`damage_all` 1 + `damage_rear` 5), **Maze** (`damage_all` 4,
 `poison_ticks` 3), **Trap Makers Workshop** / **Beast Tamer** (`room_aura` +2 to

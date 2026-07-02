@@ -122,7 +122,6 @@ rooms:
     lead_damage: 3
     lead_damage_increment: 1
     tags: [goblin, monstrous_humanoid]
-    start_in_discard: 2
     copies: 4
 
   - id: room_fireball
@@ -135,7 +134,6 @@ rooms:
     damage_all: 3
     damage_all_increment: 1
     tags: [arcane]
-    start_in_discard: 2
     copies: 4
 
   - id: room_skeletons
@@ -146,7 +144,6 @@ rooms:
     lead_damage: 3
     lead_damage_increment: 1
     tags: [undead]
-    start_in_discard: 2
     copies: 4
 
   - id: room_pit
@@ -159,7 +156,6 @@ rooms:
     damage_all: 3
     damage_all_increment: 1
     draw_on_death: true
-    start_in_discard: 2
     copies: 4
 
   # --- Growth rooms (basic, 4 damage, +1 per level, grow on death) ---
@@ -172,7 +168,6 @@ rooms:
     lead_damage_increment: 1
     grows_on_death: true
     tags: [hobgoblin, monstrous_humanoid]
-    start_in_discard: 2
     copies: 4
 
   - id: room_succubus
@@ -183,7 +178,6 @@ rooms:
     lead_damage: 4
     lead_damage_increment: 1
     grows_on_death: true
-    start_in_discard: 2
     copies: 4
 
   - id: room_zombies
@@ -195,7 +189,6 @@ rooms:
     lead_damage_increment: 1
     grows_on_death: true
     tags: [undead]
-    start_in_discard: 2
     copies: 4
 
   - id: room_mimic
@@ -206,7 +199,6 @@ rooms:
     lead_damage: 4
     lead_damage_increment: 1
     grows_on_death: true
-    start_in_discard: 2
     copies: 4
 
   # --- Draw rooms (basic, two bait icons, draw one of each card on death) ---
@@ -218,7 +210,6 @@ rooms:
     lead_damage: 4
     lead_damage_increment: 1
     draw_on_death: true
-    start_in_discard: 2
     copies: 4
 
   - id: room_cursed_ring
@@ -232,7 +223,6 @@ rooms:
     poison_damage: 2
     poison_persists: true
     tags: [arcane]
-    start_in_discard: 2
     copies: 4
 
   - id: room_wyvern
@@ -243,7 +233,6 @@ rooms:
     lead_damage: 3
     lead_damage_increment: 1
     draw_on_death: true
-    start_in_discard: 2
     copies: 4
 
   - id: room_shade
@@ -255,7 +244,6 @@ rooms:
     lead_damage_increment: 1
     draw_on_death: true
     tags: [undead]
-    start_in_discard: 2
     copies: 4
 
   # --- Trap rooms with crawl-time discard boost (basic) ---
@@ -270,7 +258,6 @@ rooms:
     damage_all_increment: 1
     discard_all_damage: 2
     tags: [undead]
-    start_in_discard: 2
     copies: 4
 
   - id: room_power_word
@@ -284,7 +271,6 @@ rooms:
     damage_all_increment: 1
     discard_all_damage: 2
     tags: [arcane]
-    start_in_discard: 2
     copies: 4
 
   # --- Poison / delayed traps (now basic) ---
@@ -297,7 +283,6 @@ rooms:
     lead_damage_increment: 1
     poison_damage: 8
     poison_persists: false
-    start_in_discard: 2
     copies: 4
 
   - id: room_poison_gas
@@ -311,7 +296,6 @@ rooms:
     damage_all_increment: 1
     poison_damage: 1
     poison_persists: true
-    start_in_discard: 2
     copies: 4
 
 advanced_rooms:
@@ -381,18 +365,22 @@ advanced_rooms:
     tags: [monstrous_humanoid]
     copies: 2
 
+  # Shadow: an unreducible grower — no hero reduction touches it, and every kill
+  # here raises its level, so it snowballs into an unblockable bruiser.
   - id: adv_shadow
     name: Shadow
     type: monster
     advanced: true
     bait: { undead: 1 }
-    lead_damage: 6
+    lead_damage: 5
     lead_damage_increment: 1
     grows_on_death: true
-    room_resist: false
+    room_resist: true
     tags: [undead]
     copies: 2
 
+  # Wright: a drainer — raises reinforcements. It draws a room + ability card per
+  # hero that dies here (card advantage) instead of snowballing its own level.
   - id: adv_wright
     name: Wright
     type: monster
@@ -400,8 +388,7 @@ advanced_rooms:
     bait: { undead: 1 }
     lead_damage: 6
     lead_damage_increment: 1
-    grows_on_death: true
-    room_resist: false
+    draw_on_death: true
     tags: [undead]
     copies: 2
 

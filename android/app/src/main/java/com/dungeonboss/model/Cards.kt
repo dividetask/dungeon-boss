@@ -148,9 +148,6 @@ class Room(
     val description: String = "",
     override val tags: Set<String> = emptySet(),
     val advanced: Boolean = false,
-    /** How many of this card's copies begin the game in the build deck's discard
-     *  pile instead of the draw pile (so they only enter play after a reshuffle). */
-    val startInDiscard: Int = 0,
     val abilityText: String = ""
 ) : BuildCard, Encounter
 
