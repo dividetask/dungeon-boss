@@ -79,7 +79,9 @@ fun CardFrame(
 private fun CardHeader(glyph: String, name: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(glyph, fontSize = 15.sp)
-        Text(name, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 2, modifier = Modifier.weight(1f))
+        // One line only — a wrapping name would push the bait/damage row out of
+        // the (short) card; overflow is simply clipped.
+        Text(name, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
     }
 }
 

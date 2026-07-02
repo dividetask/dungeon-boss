@@ -135,7 +135,7 @@ consolidated in the Recharge phase.
 > discard-to-boost a room (effects last only that crawl):
 >
 > - **Play ability cards** — any player, on any dungeon's crawl, one-shot
->   (discarded after use): Reinforcements (+2 to a room), Expose Weakness (a room
+>   (discarded after use): Bolster (+2 to a room), Counter (a room
 >   becomes unreducible), Sabotage (a room deals 0), Retreat (**target a room**:
 >   the party turns back there — rooms before it still resolve and score, the
 >   rest and the boss are skipped, and the owner takes no wound), Blueprints (the

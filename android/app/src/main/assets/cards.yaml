@@ -540,14 +540,14 @@ heroes:
 
 ability_cards:
   - id: ability_extra_damage
-    name: Reinforcements
+    name: Bolster
     effect:
       add_damage: 4
     text: "Target room deals 4 additional damage"
     copies: 8
 
   - id: ability_full_damage
-    name: Expose Weakness
+    name: Counter
     effect:
       unreducible: true
     text: "Target room deals full damage (no damage reduction)"

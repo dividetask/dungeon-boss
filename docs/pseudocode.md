@@ -138,7 +138,7 @@ party_reduction(member, encounter):
     filter_matches?(member, encounter) ? member.party_reduction : 0   # uses member.level
 
 damage_taken(target, encounter, alive_members, base, resist = NORMAL):
-    if resist == NO_REDUCE: ↦ max(base, 0)   # "cannot be reduced" / poison / Expose Weakness
+    if resist == NO_REDUCE: ↦ max(base, 0)   # "cannot be reduced" / poison / Counter
     dmg = base
     for member in alive_members:             # PARTY auras stack across members
         dmg = max(dmg - party_reduction(member, encounter), 0)

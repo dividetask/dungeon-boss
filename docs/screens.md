@@ -146,12 +146,12 @@ encounters and your ability cards. *(The full turn-based priority loop is a
 │ or boost a room by tapping "Boost" then a hand card. Then send them in.        │
 │   [Room][Room]…[BOSS]            ← rooms show effective damage incl. the boost  │
 │   [Boost (discard a card)] under each boostable room you own                   │
-│ Your ability cards:  [Reinforcements][Sabotage][Blueprints]…                   │
+│ Your ability cards:  [Bolster][Sabotage][Blueprints]…                          │
 │ Advance bar: [ Send <Party> into <Owner>'s dungeon ]                           │
 ```
 
-- **Play an ability card**: tap it; room-targeting cards (Reinforcements, Expose
-  Weakness, Sabotage) then want a room tap; others (Retreat, Blueprints) fire at
+- **Play an ability card**: tap it; room-targeting cards (Bolster, Counter,
+  Sabotage) then want a room tap; others (Retreat, Blueprints) fire at
   once.
 - **Discard-to-boost**: on a boostable room you own, tap **Boost**, then tap a
   hand card to discard — the room gains +4 (or becomes unreducible) this crawl.

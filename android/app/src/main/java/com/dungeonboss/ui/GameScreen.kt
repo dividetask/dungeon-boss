@@ -212,27 +212,26 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                 }
 
                 if (game == null) {
-                    val hasSave = vm.hasSavedGame()
-                    if (hasSave) {
-                        Button(
-                            onClick = { vm.restoreIfSaved() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
-                        ) {
-                            Text("Resume game", color = Color.White)
-                        }
+                    // Resume only works for a game still in progress; a finished (or
+                    // absent) save leaves it greyed out and disabled.
+                    val canResume = vm.savedGameInProgress()
+                    Button(
+                        onClick = { vm.restoreIfSaved() },
+                        enabled = canResume,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Palette.Accent,
+                            disabledContainerColor = Color(0xFFE6E6E6),
+                            disabledContentColor = Palette.SubText
+                        )
+                    ) {
+                        Text("Resume game", color = if (canResume) Color.White else Palette.SubText)
                     }
                     Button(
                         onClick = { vm.newGame(playerCount) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (hasSave) Palette.SubText else Palette.Accent
-                        )
+                        colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
                     ) {
                         Text("New game", color = Color.White)
                     }
-                    Text(
-                        "You are Player 1; the others are computers. Set the player count in the ☰ menu.",
-                        color = Palette.SubText, fontSize = 13.sp
-                    )
                 } else {
                     GameBody(
                         tick = tick,

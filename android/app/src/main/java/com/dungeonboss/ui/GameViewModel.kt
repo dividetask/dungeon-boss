@@ -81,6 +81,16 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     /** True if a saved game is on disk (for a start-screen "Resume"/"New game" choice). */
     fun hasSavedGame(): Boolean = saveFile.exists()
 
+    /** True only if the saved game exists AND is still in progress (not finished). */
+    fun savedGameInProgress(): Boolean {
+        if (!saveFile.exists()) return false
+        return try {
+            JSONObject(saveFile.readText()).optString("stage") != "OVER"
+        } catch (t: Throwable) {
+            false
+        }
+    }
+
     /** Load the saved game if present; a corrupt/old save is discarded, never fatal. */
     fun restoreIfSaved() {
         if (!saveFile.exists()) return

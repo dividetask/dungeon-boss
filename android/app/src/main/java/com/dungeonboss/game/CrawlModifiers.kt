@@ -7,7 +7,7 @@ package com.dungeonboss.game
  * `webapp/lib/crawl_modifiers.rb`.
  */
 class CrawlModifiers {
-    private val plus = HashMap<Int, Int>()          // +damage (Reinforcements / boost)
+    private val plus = HashMap<Int, Int>()          // +damage (Bolster / boost)
     private val zeroed = HashMap<Int, Boolean>()    // damage forced to 0 (Sabotage)
     private val setTo = HashMap<Int, Int>()         // damage overridden (discard-to-boost)
     private val unreducibleAt = HashMap<Int, Boolean>() // damage cannot be reduced

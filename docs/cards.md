@@ -308,8 +308,8 @@ a chosen room, so those cards need a room target — the others do not:
 
 ```yaml
 effect:
-  add_damage: 2        # +N to the targeted room this crawl  (Reinforcements)
-  unreducible: true    # the targeted room can't be reduced  (Expose Weakness)
+  add_damage: 2        # +N to the targeted room this crawl  (Bolster)
+  unreducible: true    # the targeted room can't be reduced  (Counter)
   zero: true           # the targeted room deals 0           (Sabotage)
   retreat: true        # party turns back at the targeted room (Retreat)
   draw_rooms: 2        # the player draws N room cards        (Blueprints)
@@ -322,8 +322,8 @@ owner points), but the chosen room and everything after — including the boss �
 are skipped, and the owner takes **no wound** (the survivors escaped). Targeting
 the entrance (room 0) is a full retreat with no crawl at all.
 
-The five ability cards: **Reinforcements** (`add_damage: 2`), **Expose
-Weakness** (`unreducible: true`), **Sabotage** (`zero: true`), **Retreat**
+The five ability cards: **Bolster** (`add_damage: 2`), **Counter**
+(`unreducible: true`), **Sabotage** (`zero: true`), **Retreat**
 (`retreat: true`), **Blueprints** (`draw_rooms: 2`).
 
 ## YAML schema
@@ -380,7 +380,7 @@ heroes:
 
 ability_cards:
   - id: ability_reinforcements
-    name: Reinforcements
+    name: Bolster
     text: "+2 damage to a room this crawl."
     effect:
       add_damage: 2
