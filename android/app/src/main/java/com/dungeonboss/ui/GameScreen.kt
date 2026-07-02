@@ -103,6 +103,14 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
     // Standings). It overrides the auto-viewed dungeon and swaps the bottom bar
     // for a single Return button until the user returns to the live view.
     var viewingOther by remember { mutableStateOf<String?>(null) }
+    // True right after the crawl phase opens, before the player presses Continue:
+    // the board stays on your just-built dungeon so it doesn't jump straight to
+    // another player's dungeon.
+    var awaitingCrawlStart by remember { mutableStateOf(false) }
+    // True while a resolved crawl is animating. The engine finishes the turn
+    // synchronously on the last Send (stage leaves CRAWLING), so this keeps the
+    // crawl-progress row on screen until the animation actually ends.
+    var animating by remember { mutableStateOf(false) }
     // Number of players for the next new game (the New game button lives at the
     // bottom-right; the ☰ menu keeps the count selector).
     var playerCount by remember { mutableStateOf(2) }
@@ -130,6 +138,7 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
         val g = vm.game ?: return@LaunchedEffect
         val outcome = g.lastOutcomes.firstOrNull() ?: return@LaunchedEffect
 
+        animating = true
         activeIndex.value = null
         heroHp.clear(); deadSet.clear()
         val participants = outcome.result.participants
@@ -146,15 +155,20 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
         }
         activeIndex.value = null
         delay(500)
+        animating = false
         // Move to the next party's target dungeon (so the Send button and the
         // board agree), or back to your own when the turn is done.
         viewed.value = vm.game?.nextCrawl()?.first?.name ?: humanName
     }
 
-    // When the crawl phase opens, show the first party's target dungeon.
+    // When the crawl phase opens, pause on your own (just-built) dungeon and wait
+    // for Continue rather than jumping straight to the first crawl target.
     LaunchedEffect(game?.crawling()) {
         if (game?.crawling() == true) {
-            game.nextCrawl()?.first?.name?.let { viewed.value = it }
+            awaitingCrawlStart = true
+            viewed.value = humanName
+        } else {
+            awaitingCrawlStart = false
         }
     }
 
@@ -265,7 +279,8 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         onShowDetail = { card -> detailCard = card },
                         activeIndex = activeIndex.value,
                         heroHp = heroHp,
-                        deadSet = deadSet
+                        deadSet = deadSet,
+                        animating = animating
                     )
                 }
             }
@@ -280,6 +295,11 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         tick = tick, game = game, humanName = humanName,
                         viewingOther = viewingOther != null,
                         onReturn = { viewingOther = null },
+                        awaitingCrawlStart = awaitingCrawlStart,
+                        onBeginCrawl = {
+                            awaitingCrawlStart = false
+                            game.nextCrawl()?.first?.name?.let { viewed.value = it }
+                        },
                         onDecide = { c, t -> vm.decide(c, t) },
                         onNextTurn = { vm.nextTurn() },
                         onSend = { vm.sendNextParty() },
@@ -416,6 +436,7 @@ internal fun GameBody(
     activeIndex: Int?,
     heroHp: Map<Int, Int>,
     deadSet: List<Int>,
+    animating: Boolean = false,
     // Tutorial-only highlight hooks; the live game leaves these off.
     baitHighlight: Set<Bait> = emptySet(),
     baitGlow: Float = 1f,
@@ -582,7 +603,7 @@ internal fun GameBody(
     // Crawl-progress row (between the hand row and the dungeon): each party this
     // turn as a compact coloured box — grey = done, green = about to crawl,
     // blue = still waiting. Empty outside the Crawl phase.
-    key(tick) { CrawlPartyRow(game, onShowDetail) }
+    key(tick) { CrawlPartyRow(game, animating, onShowDetail) }
     key(tick) {
         DungeonBoard(
             tick = tick,
@@ -1207,10 +1228,13 @@ private val CrawlRowHeight = 26.dp
  * holding its height so the dungeon below keeps a steady position.
  */
 @Composable
-private fun CrawlPartyRow(game: Game, onShowDetail: (Any) -> Unit) {
+private fun CrawlPartyRow(game: Game, animating: Boolean, onShowDetail: (Any) -> Unit) {
     val parties = game.crawlOrder()
-    val current = game.nextCrawl()?.second
-    if (!game.crawling() || parties.isEmpty() || current == null) {
+    // Stay visible through the resolve animation: the engine may have already
+    // left the Crawl phase (last Send finishes the turn synchronously), so fall
+    // back to the party being animated when there is no pre-crawl party.
+    val current = game.nextCrawl()?.second ?: game.lastOutcomes.firstOrNull()?.party
+    if ((!game.crawling() && !animating) || parties.isEmpty() || current == null) {
         Spacer(Modifier.height(CrawlRowHeight))   // reserve space between phases
         return
     }
@@ -1402,6 +1426,8 @@ private fun AdvanceBar(
     humanName: String,
     viewingOther: Boolean = false,
     onReturn: () -> Unit = {},
+    awaitingCrawlStart: Boolean = false,
+    onBeginCrawl: () -> Unit = {},
     onDecide: (String?, Any?) -> Unit,
     onNextTurn: () -> Unit,
     onSend: () -> Unit,
@@ -1457,6 +1483,8 @@ private fun AdvanceBar(
         }
         mineKind == DecisionKind.BUILD_ROOM -> Triple("Build nothing", true, { onDecide(null, null) })
         game.quiet() -> Triple("Continue ▶", true, onContinueQuiet)
+        // After building, pause on your dungeon; Continue begins the crawl.
+        awaitingCrawlStart && game.crawling() -> Triple("Continue ▶", true, onBeginCrawl)
         game.crawling() && game.nextCrawl() != null -> Triple("Send ▶", true, onSend)
         game.over() -> Triple("", false, noop)
         setupDone -> Triple("Start ▶", true, onNextTurn)
