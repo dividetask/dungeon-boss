@@ -294,7 +294,7 @@ advanced_rooms:
     advanced: true
     bait: { glory: 1 }
     lead_damage: 4
-    lead_damage_increment: 1
+    lead_damage_increment: 2
     grows_on_death: true
     room_resist: true
     tags: [monstrous_humanoid]
@@ -311,17 +311,21 @@ advanced_rooms:
     tags: [monstrous_humanoid]
     copies: 4
 
-  # Shadow: an unreducible grower — no hero reduction touches it, and every kill
-  # here raises its level, so it snowballs into an unblockable bruiser.
+  # Shadow: a fast grower that strikes the weakest hero first (rear, cascading
+  # upward) and can't be halved — the Barbarian's self-halve does nothing to it
+  # (but hero reductions still apply). Every kill raises its level by 1, and with
+  # +2 rear per level it snowballs quickly, picking off the frail.
   - id: adv_shadow
     name: Shadow
     type: monster
     advanced: true
     bait: { undead: 1 }
-    lead_damage: 5
-    lead_damage_increment: 1
+    lead_damage: 0
+    lead_damage_increment: 0
+    damage_rear: 6
+    damage_rear_increment: 2
     grows_on_death: true
-    room_resist: true
+    room_resist: false
     tags: [undead]
     copies: 4
 

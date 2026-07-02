@@ -269,11 +269,12 @@ are loaded with `advanced: true`) and start the game seeded into the **discard
 pile**, so they cannot appear in an opening hand — they enter circulation only
 after the first reshuffle.
 
-The twelve advanced rooms (×2 each): **Antimagic Room** (`damage_all` 4, filter
-mage, can't reduce), **Zealots** (filter cleric), **False Trigger** (filter
-rogue), **Gladiator** (lead 4, grows, can't reduce), **Troll** (lead 10 +4/level,
-grows), **Shadow** (lead 5, grows, can't be reduced — an unblockable snowball),
-**Wright** (lead 6, `draw_on_death` — a card-advantage drainer), **Mirror**
+The twelve advanced rooms (one copy per player): **Antimagic Room** (`damage_all`
+4, filter mage, can't reduce), **Zealots** (filter cleric), **False Trigger**
+(filter rogue), **Gladiator** (lead 4 +2/level, grows, can't reduce), **Troll** (lead 10 +4/level,
+grows), **Shadow** (`damage_rear` 6 +2/level, grows, can't be halved — a fast undead
+snowball that picks off the weakest first), **Wright** (lead 6, `draw_on_death` —
+a card-advantage drainer), **Mirror**
 (`lead_max_party_hp` — an unreducible lead hit for the party's highest max HP),
 **Black Tentacles** (`damage_all` 1 + `damage_rear` 5), **Maze** (`damage_all` 4,
 `poison_ticks` 3), **Trap Makers Workshop** / **Beast Tamer** (`room_aura` +2 to
