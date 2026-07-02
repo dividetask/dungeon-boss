@@ -1083,6 +1083,7 @@ internal fun DungeonBoard(
                                 }
                             }
                             DeathMarkers(prediction, ei)
+                            FledMarkers(prediction, mods?.retreatIndex(), ei)
                         }
                     }
                 }
@@ -1160,29 +1161,53 @@ private fun DeathMarkers(prediction: PartyCrawlResolver.Result?, encounterIndex:
 }
 
 /**
- * Under the boss: heroes who leave alive. Surviving the whole crawl (the owner
- * takes a wound) reads green with a ✓; fleeing via a Retreat (no wound) reads
- * amber with a ↩, so the two outcomes are visually distinct.
+ * Under the boss: only heroes who make it through the WHOLE crawl alive (green
+ * ✓ — the owner takes a wound). Fleeing via a Retreat turns the party back
+ * *before* the boss, so those heroes never reach it — they're shown at the
+ * retreat room by [FledMarkers], not here.
  */
 @Composable
 private fun SurvivorMarkers(prediction: PartyCrawlResolver.Result?, retreated: Boolean = false) {
+    if (retreated) return // the party turned back before the boss; nobody reaches it
     val survivors = prediction?.survivors ?: emptyList()
     if (survivors.isEmpty()) return
-    val bg = if (retreated) Palette.FledBg else Palette.PartyBg
-    val border = if (retreated) Palette.FledBorder else Palette.PartyBorder
-    val fg = if (retreated) Palette.FledText else Palette.PartyHead
-    val mark = if (retreated) "↩" else "✓"
     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         survivors.groupBy { it.id }.values.forEach { group ->
             Box(
                 Modifier
                     .clip(RoundedCornerShape(6.dp))
-                    .background(bg)
-                    .border(1.dp, border, RoundedCornerShape(6.dp))
+                    .background(Palette.PartyBg)
+                    .border(1.dp, Palette.PartyBorder, RoundedCornerShape(6.dp))
                     .padding(horizontal = 3.dp, vertical = 1.dp)
             ) {
-                Text("$mark${CardArt.heroArt(group.first().id)}" + if (group.size > 1) "×${group.size}" else "",
-                    fontSize = 12.sp, color = fg)
+                Text("✓${CardArt.heroArt(group.first().id)}" + if (group.size > 1) "×${group.size}" else "",
+                    fontSize = 12.sp, color = Palette.PartyHead)
+            }
+        }
+    }
+}
+
+/**
+ * Under the retreat room: the heroes who turn back here (amber ↩). A Retreat skips
+ * this room and everything after (the boss included), so the escapees are shown
+ * at the point they fled, not at a boss they never reached.
+ */
+@Composable
+private fun FledMarkers(prediction: PartyCrawlResolver.Result?, retreatIndex: Int?, encounterIndex: Int) {
+    if (retreatIndex == null || encounterIndex != retreatIndex) return
+    val fled = prediction?.survivors ?: emptyList()
+    if (fled.isEmpty()) return
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        fled.groupBy { it.id }.values.forEach { group ->
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Palette.FledBg)
+                    .border(1.dp, Palette.FledBorder, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 3.dp, vertical = 1.dp)
+            ) {
+                Text("↩${CardArt.heroArt(group.first().id)}" + if (group.size > 1) "×${group.size}" else "",
+                    fontSize = 12.sp, color = Palette.FledText)
             }
         }
     }
