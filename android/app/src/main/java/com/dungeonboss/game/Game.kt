@@ -137,6 +137,7 @@ class Game(
         round += 1
         lastOutcomes = emptyList() // clear last turn's crawl so it doesn't linger
         undoablePlacement = null
+        undoableDiscard = null // a new turn starts fresh; last turn's discard is final
         undoableAbilities.clear()
         ArrivalPhase.run(this)
         // Discard (0–2, optional) then Build, per living player. The Draw phase runs
@@ -440,9 +441,13 @@ class Game(
         if (choiceId == null && !decision.allowSkip) {
             throw IllegalArgumentException("${decision.kind} requires a choice")
         }
-        // A discard becomes the new undoable action; any other choice closes the
-        // window on the previous discard.
-        if (decision.kind != DecisionKind.DISCARD_ROOMS) undoableDiscard = null
+        // A discard becomes the new undoable action, and it stays undoable through
+        // the Build that follows so the player can unwind the whole turn (undo the
+        // room, then the discard). Any OTHER choice closes the window on it; the
+        // turn/round and crawl boundaries clear it too.
+        if (decision.kind != DecisionKind.DISCARD_ROOMS && decision.kind != DecisionKind.BUILD_ROOM) {
+            undoableDiscard = null
+        }
         apply(decision, choiceId, target)
         resolveIfIdle()
     }
@@ -479,7 +484,9 @@ class Game(
                 val discarded = DiscardPhase.discard(this, player, ids)
                 // Draw 1 + (cards discarded), capturing the drawn cards for undo.
                 val drawn = drawRoomsFor(player, DrawPhase.BASE_DRAW + discarded.size)
-                undoableDiscard = UndoableDiscard(player, discarded, drawn)
+                // Only the human's discard is undoable; an agent's must not clobber
+                // it (agents build after the human, sharing this field).
+                if (!automated(player)) undoableDiscard = UndoableDiscard(player, discarded, drawn)
             }
             DecisionKind.BUILD_ROOM -> {
                 val player = decision.player
