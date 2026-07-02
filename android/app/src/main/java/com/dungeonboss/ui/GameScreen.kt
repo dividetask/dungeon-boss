@@ -1668,6 +1668,13 @@ private fun describeRoom(e: Encounter): String {
         parts.add("Deals ${e.damageAll} damage$who.")
     }
     if (e.damageRear > 0) parts.add("Deals ${e.damageRear} damage to weakest first.")
+    // Call out only the fast growers — a +1-per-level room grows too slowly to be
+    // worth noting, so the note appears only when an increment exceeds 1.
+    val growInc = maxOf(e.leadIncrement, e.allIncrement, e.rearIncrement)
+    if (growInc > 1.0) {
+        val label = if (growInc % 1.0 == 0.0) growInc.toInt().toString() else growInc.toString()
+        parts.add("Increases by $label each level.")
+    }
     when (e.roomResist) {
         true -> parts.add("Cannot be reduced.")
         false -> parts.add("Cannot be halved.")
