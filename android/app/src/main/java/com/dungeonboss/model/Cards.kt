@@ -266,4 +266,17 @@ class PlacedRoom(val baseRoom: Room) : Encounter {
         copy.grantedBait.putAll(grantedBait)
         return copy
     }
+
+    /** The bait icons granted by upgrades (for saving a game). */
+    fun grantedBaitMap(): Map<Bait, Int> = LinkedHashMap(grantedBait)
+
+    companion object {
+        /** Rebuild a placed room at a saved level with saved granted bait. */
+        fun restored(baseRoom: Room, level: Int, grantedBait: Map<Bait, Int>): PlacedRoom {
+            val room = PlacedRoom(baseRoom)
+            room.level = level
+            room.grantedBait.putAll(grantedBait)
+            return room
+        }
+    }
 }

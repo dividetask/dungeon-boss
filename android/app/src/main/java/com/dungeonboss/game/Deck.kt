@@ -16,6 +16,15 @@ class Deck<T>(cards: List<T> = emptyList(), private val rng: Random = Random.Def
         return this
     }
 
+    /** The current (drawPile, discardPile) contents in order — for saving a game. */
+    fun snapshot(): Pair<List<T>, List<T>> = drawPile.toList() to discardPile.toList()
+
+    /** Replace both piles wholesale — for restoring a saved game. */
+    fun restore(draw: List<T>, discard: List<T>) {
+        drawPile = draw.toMutableList()
+        discardPile = discard.toMutableList()
+    }
+
     /** True only when both piles are empty (nothing left to draw or reshuffle). */
     fun isEmpty(): Boolean = drawPile.isEmpty() && discardPile.isEmpty()
 
