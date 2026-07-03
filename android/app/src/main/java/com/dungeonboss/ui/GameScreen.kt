@@ -107,6 +107,10 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
     // the board stays on your just-built dungeon so it doesn't jump straight to
     // another player's dungeon.
     var awaitingCrawlStart by remember { mutableStateOf(false) }
+    // True while a finished crawl is being reviewed: the board holds on the
+    // crawled dungeon showing where each hero died (and the HP bars), and the bar
+    // shows Continue. Pressing it advances to the next party's pre-crawl.
+    var reviewingResult by remember { mutableStateOf(false) }
     // Number of players for the next new game (the New game button lives at the
     // bottom-right; the ☰ menu keeps the count selector).
     var playerCount by remember { mutableStateOf(2) }
@@ -134,6 +138,7 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
         val g = vm.game ?: return@LaunchedEffect
         val outcome = g.lastOutcomes.firstOrNull() ?: return@LaunchedEffect
 
+        reviewingResult = true
         activeIndex.value = null
         heroHp.clear(); deadSet.clear()
         val participants = outcome.result.participants
@@ -149,10 +154,8 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
             delay(700)
         }
         activeIndex.value = null
-        delay(500)
-        // Move to the next party's target dungeon (so the Send button and the
-        // board agree), or back to your own when the turn is done.
-        viewed.value = vm.game?.nextCrawl()?.first?.name ?: humanName
+        // Hold on the crawled dungeon (result + death markers) until the player
+        // presses Continue; onBeginCrawl-style advance happens there, not here.
     }
 
     // When the crawl phase opens, pause on your own (just-built) dungeon and wait
@@ -160,6 +163,7 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
     LaunchedEffect(game?.crawling()) {
         if (game?.crawling() == true) {
             awaitingCrawlStart = true
+            reviewingResult = false      // fresh crawl phase; nothing resolved yet
             viewed.value = humanName
         } else {
             awaitingCrawlStart = false
@@ -272,7 +276,8 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         onShowDetail = { card -> detailCard = card },
                         activeIndex = activeIndex.value,
                         heroHp = heroHp,
-                        deadSet = deadSet
+                        deadSet = deadSet,
+                        reviewingResult = reviewingResult
                     )
                 }
             }
@@ -291,6 +296,11 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         onBeginCrawl = {
                             awaitingCrawlStart = false
                             game.nextCrawl()?.first?.name?.let { viewed.value = it }
+                        },
+                        reviewingResult = reviewingResult,
+                        onFinishReview = {
+                            reviewingResult = false
+                            viewed.value = game.nextCrawl()?.first?.name ?: humanName
                         },
                         onDecide = { c, t -> vm.decide(c, t) },
                         onNextTurn = { vm.nextTurn() },
@@ -428,6 +438,7 @@ internal fun GameBody(
     activeIndex: Int?,
     heroHp: Map<Int, Int>,
     deadSet: List<Int>,
+    reviewingResult: Boolean = false,
     // Tutorial-only highlight hooks; the live game leaves these off.
     baitHighlight: Set<Bait> = emptySet(),
     baitGlow: Float = 1f,
@@ -588,15 +599,21 @@ internal fun GameBody(
         } else emptySet()
 
     // No board title — whose dungeon it is shows as (P1)/(P2) on the boss card.
-    // The party in the pre-crawl window enters this dungeon; preview its fate.
-    // While a just-finished crawl's HP bars are shown on this dungeon
-    // (isCrawledHere), suppress the next party's preview so the two never overlap.
-    val incoming = if (preCrawl && crawlOwner == viewedPlayer && !isCrawledHere) crawl?.second else null
-    val prediction = if (incoming != null) game.predictCurrentCrawl() else null
+    // While reviewing a finished crawl, the board shows THAT crawl's result: its
+    // death markers (which hero died in which room) and no next-party preview.
+    val reviewingHere = reviewingResult && isCrawledHere && outcome != null
+    // The party in the pre-crawl window enters this dungeon; preview its fate —
+    // but not while a finished crawl is being reviewed on the same dungeon.
+    val incoming = if (preCrawl && crawlOwner == viewedPlayer && !reviewingResult) crawl?.second else null
+    val prediction = when {
+        reviewingHere -> outcome!!.result       // show where the crawlers just died
+        incoming != null -> game.predictCurrentCrawl()
+        else -> null
+    }
     // Crawl-progress row (between the hand row and the dungeon): each party this
     // turn as a compact coloured box — grey = done, green = about to crawl,
     // blue = still waiting. Empty outside the Crawl phase.
-    key(tick) { CrawlPartyRow(game, onShowDetail) }
+    key(tick) { CrawlPartyRow(game, reviewingResult, onShowDetail) }
     key(tick) {
         DungeonBoard(
             tick = tick,
@@ -619,14 +636,15 @@ internal fun GameBody(
         )
     }
 
-    if (isCrawledHere && outcome != null) {
+    if (reviewingHere) {
         // The just-crawled party's hero HP bars, directly beneath the dungeon
-        // (the per-party summary lives in the crawl-progress row above the board).
+        // (only while its result is being reviewed, so a later pre-crawl on the
+        // same dungeon doesn't keep showing them).
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            outcome.result.participants.forEachIndexed { i, hero ->
+            outcome!!.result.participants.forEachIndexed { i, hero ->
                 val dead = deadSet.contains(i)
                 HeroChip(hero.name, heroHp[i] ?: hero.maxHp, hero.maxHp, dead, fled = outcome.retreated && !dead)
             }
@@ -1222,24 +1240,26 @@ private val CrawlRowHeight = 26.dp
  * turn has no parties it holds its height empty so the dungeon keeps its place.
  */
 @Composable
-private fun CrawlPartyRow(game: Game, onShowDetail: (Any) -> Unit) {
-    // The party about to crawl (green). Once the turn's crawls are all resolved
-    // (READY) there is none, so every box reads as done (grey).
-    val current = if (game.crawling()) game.nextCrawl()?.second else null
+private fun CrawlPartyRow(game: Game, reviewingResult: Boolean, onShowDetail: (Any) -> Unit) {
+    // The engine's about-to-crawl party (used to keep it in the list).
+    val engineCurrent = if (game.crawling()) game.nextCrawl()?.second else null
     // Only parties that take part in the crawl: those that already crawled, the
     // one about to, and (mid-crawl) those still enticed into a dungeon. Parties
     // that stay in town are shown in the town strip, not here.
     val parties = game.crawlOrder().filter { p ->
         game.crawlOutcomeFor(p) != null ||
-            p === current ||
+            p === engineCurrent ||
             (game.crawling() && EnticePhase.targetFor(game, p) != null)
     }
     if (parties.isEmpty()) {
         Spacer(Modifier.height(CrawlRowHeight))   // reserve space between phases
         return
     }
-    val currentIdx = current?.let { p -> parties.indexOfFirst { it === p } } ?: parties.size
-    val label = if (currentIdx in parties.indices) "Party ${currentIdx + 1} of ${parties.size}"
+    // The green box is whatever is on screen now: the party being reviewed, else
+    // the one about to crawl. None once every crawl is resolved (all read grey).
+    val focus = if (reviewingResult) game.lastOutcomes.firstOrNull()?.party else engineCurrent
+    val focusIdx = focus?.let { f -> parties.indexOfFirst { it === f } } ?: parties.size
+    val label = if (focusIdx in parties.indices) "Party ${focusIdx + 1} of ${parties.size}"
                 else "${parties.size} ${if (parties.size == 1) "party" else "parties"} this turn"
 
     Row(
@@ -1259,11 +1279,11 @@ private fun CrawlPartyRow(game: Game, onShowDetail: (Any) -> Unit) {
         ) {
             parties.forEachIndexed { i, party ->
                 val state = when {
-                    i == currentIdx -> CrawlPartyState.NOW
-                    i < currentIdx -> CrawlPartyState.WENT
+                    i == focusIdx -> CrawlPartyState.NOW
+                    i < focusIdx -> CrawlPartyState.WENT
                     else -> CrawlPartyState.WAITING
                 }
-                CrawlPartyChip(game, party, isCurrent = party === current, state = state, onShowDetail = onShowDetail)
+                CrawlPartyChip(game, party, isCurrent = party === focus, state = state, onShowDetail = onShowDetail)
             }
         }
     }
@@ -1436,6 +1456,8 @@ private fun AdvanceBar(
     onReturn: () -> Unit = {},
     awaitingCrawlStart: Boolean = false,
     onBeginCrawl: () -> Unit = {},
+    reviewingResult: Boolean = false,
+    onFinishReview: () -> Unit = {},
     onDecide: (String?, Any?) -> Unit,
     onNextTurn: () -> Unit,
     onSend: () -> Unit,
@@ -1490,6 +1512,8 @@ private fun AdvanceBar(
             Triple(label, true, { onDecide(discardSelection.joinToString(",").ifEmpty { null }, null) })
         }
         mineKind == DecisionKind.BUILD_ROOM -> Triple("Build nothing", true, { onDecide(null, null) })
+        // Reviewing a finished crawl (result + death markers); Continue → next party.
+        reviewingResult -> Triple("Continue ▶", true, onFinishReview)
         game.quiet() -> Triple("Continue ▶", true, onContinueQuiet)
         // After building, pause on your dungeon; Continue begins the crawl.
         awaitingCrawlStart && game.crawling() -> Triple("Continue ▶", true, onBeginCrawl)

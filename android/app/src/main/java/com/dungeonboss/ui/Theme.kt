@@ -69,7 +69,7 @@ object CardArt {
         "boss_lich" to "☠️", "boss_oni" to "👹",
         "boss_vampire" to "🧛", "boss_medusa" to "🐍",
         "boss_goblin_chieftain" to "👺", "boss_malevolent_spirit" to "👻",
-        "boss_kobold_chieftain" to "🐲", "boss_necromancer" to "🧟"
+        "boss_kobold_chieftain" to "🐲", "boss_necromancer" to "🪦"
     )
 
     fun heroArt(id: String): String = heroArt[id] ?: "🧝"
