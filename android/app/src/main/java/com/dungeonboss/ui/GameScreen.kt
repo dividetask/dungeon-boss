@@ -107,10 +107,6 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
     // the board stays on your just-built dungeon so it doesn't jump straight to
     // another player's dungeon.
     var awaitingCrawlStart by remember { mutableStateOf(false) }
-    // True while a resolved crawl is animating. The engine finishes the turn
-    // synchronously on the last Send (stage leaves CRAWLING), so this keeps the
-    // crawl-progress row on screen until the animation actually ends.
-    var animating by remember { mutableStateOf(false) }
     // Number of players for the next new game (the New game button lives at the
     // bottom-right; the ☰ menu keeps the count selector).
     var playerCount by remember { mutableStateOf(2) }
@@ -138,7 +134,6 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
         val g = vm.game ?: return@LaunchedEffect
         val outcome = g.lastOutcomes.firstOrNull() ?: return@LaunchedEffect
 
-        animating = true
         activeIndex.value = null
         heroHp.clear(); deadSet.clear()
         val participants = outcome.result.participants
@@ -155,7 +150,6 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
         }
         activeIndex.value = null
         delay(500)
-        animating = false
         // Move to the next party's target dungeon (so the Send button and the
         // board agree), or back to your own when the turn is done.
         viewed.value = vm.game?.nextCrawl()?.first?.name ?: humanName
@@ -278,8 +272,7 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         onShowDetail = { card -> detailCard = card },
                         activeIndex = activeIndex.value,
                         heroHp = heroHp,
-                        deadSet = deadSet,
-                        animating = animating
+                        deadSet = deadSet
                     )
                 }
             }
@@ -435,7 +428,6 @@ internal fun GameBody(
     activeIndex: Int?,
     heroHp: Map<Int, Int>,
     deadSet: List<Int>,
-    animating: Boolean = false,
     // Tutorial-only highlight hooks; the live game leaves these off.
     baitHighlight: Set<Bait> = emptySet(),
     baitGlow: Float = 1f,
@@ -602,7 +594,7 @@ internal fun GameBody(
     // Crawl-progress row (between the hand row and the dungeon): each party this
     // turn as a compact coloured box — grey = done, green = about to crawl,
     // blue = still waiting. Empty outside the Crawl phase.
-    key(tick) { CrawlPartyRow(game, animating, onShowDetail) }
+    key(tick) { CrawlPartyRow(game, onShowDetail) }
     key(tick) {
         DungeonBoard(
             tick = tick,
@@ -1221,23 +1213,26 @@ private val CrawlRowHeight = 26.dp
 
 /**
  * The crawl-progress row: every party this turn as a compact box, in town order,
- * coloured by state (grey done / green about-to-go / blue waiting). "Party i of
- * N" is pinned on the left and never scrolls; the boxes scroll horizontally when
- * there are many parties. Outside the Crawl phase it stays present but empty,
- * holding its height so the dungeon below keeps a steady position.
+ * coloured by state (grey done / green about-to-go / blue waiting). It stays up
+ * from the moment the crawl phase opens through the READY that follows it (so the
+ * heroes that just crawled remain visible), and clears when the next turn begins.
+ * "Party i of N" is pinned on the left; the boxes scroll horizontally. When the
+ * turn has no parties it holds its height empty so the dungeon keeps its place.
  */
 @Composable
-private fun CrawlPartyRow(game: Game, animating: Boolean, onShowDetail: (Any) -> Unit) {
+private fun CrawlPartyRow(game: Game, onShowDetail: (Any) -> Unit) {
     val parties = game.crawlOrder()
-    // Stay visible through the resolve animation: the engine may have already
-    // left the Crawl phase (last Send finishes the turn synchronously), so fall
-    // back to the party being animated when there is no pre-crawl party.
-    val current = game.nextCrawl()?.second ?: game.lastOutcomes.firstOrNull()?.party
-    if ((!game.crawling() && !animating) || parties.isEmpty() || current == null) {
+    if (parties.isEmpty()) {
         Spacer(Modifier.height(CrawlRowHeight))   // reserve space between phases
         return
     }
-    val currentIdx = parties.indexOfFirst { it === current }.coerceAtLeast(0)
+    // The party about to crawl (green). Once the turn's crawls are all resolved
+    // (READY, or the last party animating) there is none, so every box reads as
+    // done (grey) and the label settles on the final count.
+    val current = if (game.crawling()) game.nextCrawl()?.second else null
+    val currentIdx = current?.let { p -> parties.indexOfFirst { it === p } } ?: parties.size
+    val label = if (currentIdx in parties.indices) "Party ${currentIdx + 1} of ${parties.size}"
+                else "${parties.size} ${if (parties.size == 1) "party" else "parties"} this turn"
 
     Row(
         Modifier.fillMaxWidth().heightIn(min = CrawlRowHeight),
@@ -1246,7 +1241,7 @@ private fun CrawlPartyRow(game: Game, animating: Boolean, onShowDetail: (Any) ->
     ) {
         // Pinned position label — always visible, outside the scrolling region.
         Text(
-            "Party ${currentIdx + 1} of ${parties.size}",
+            label,
             fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Palette.SubText, maxLines = 1
         )
         Row(
@@ -1256,8 +1251,8 @@ private fun CrawlPartyRow(game: Game, animating: Boolean, onShowDetail: (Any) ->
         ) {
             parties.forEachIndexed { i, party ->
                 val state = when {
-                    i < currentIdx -> CrawlPartyState.WENT
                     i == currentIdx -> CrawlPartyState.NOW
+                    i < currentIdx -> CrawlPartyState.WENT
                     else -> CrawlPartyState.WAITING
                 }
                 CrawlPartyChip(game, party, isCurrent = party === current, state = state, onShowDetail = onShowDetail)
@@ -1280,9 +1275,15 @@ private fun CrawlPartyChip(
     state: CrawlPartyState,
     onShowDetail: (Any) -> Unit
 ) {
-    val target = if (isCurrent) game.nextCrawl()?.first else EnticePhase.mostEnticingPlayer(game, party)
-    val bossId = target?.dungeon?.boss?.id
     val outcome = game.crawlOutcomeFor(party)
+    // Boss icon = the dungeon this party actually entered (once resolved), else
+    // the one it is about to enter, else its strongest lure.
+    val target = when {
+        outcome != null -> outcome.player
+        isCurrent -> game.nextCrawl()?.first
+        else -> EnticePhase.mostEnticingPlayer(game, party)
+    }
+    val bossId = target?.dungeon?.boss?.id
     // After a crawl the party loses its dead members, so read the full roster and
     // each member's fate from the retained outcome instead of party.heroes.
     val roster = outcome?.result?.participants ?: party.heroes

@@ -163,6 +163,10 @@ class Game(
 
         round += 1
         lastOutcomes = emptyList() // clear last turn's crawl so it doesn't linger
+        // The crawl-progress row shows the finished crawl through the following
+        // READY, then clears here so it's empty during the new turn's build.
+        turnParties.clear()
+        turnOutcomes.clear()
         undoablePlacement = null
         undoableDiscard = null // a new turn starts fresh; last turn's discard is final
         undoableAbilities.clear()
