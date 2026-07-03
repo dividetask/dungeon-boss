@@ -589,7 +589,9 @@ internal fun GameBody(
 
     // No board title — whose dungeon it is shows as (P1)/(P2) on the boss card.
     // The party in the pre-crawl window enters this dungeon; preview its fate.
-    val incoming = if (preCrawl && crawlOwner == viewedPlayer) crawl?.second else null
+    // While a just-finished crawl's HP bars are shown on this dungeon
+    // (isCrawledHere), suppress the next party's preview so the two never overlap.
+    val incoming = if (preCrawl && crawlOwner == viewedPlayer && !isCrawledHere) crawl?.second else null
     val prediction = if (incoming != null) game.predictCurrentCrawl() else null
     // Crawl-progress row (between the hand row and the dungeon): each party this
     // turn as a compact coloured box — grey = done, green = about to crawl,
@@ -1221,15 +1223,21 @@ private val CrawlRowHeight = 26.dp
  */
 @Composable
 private fun CrawlPartyRow(game: Game, onShowDetail: (Any) -> Unit) {
-    val parties = game.crawlOrder()
+    // The party about to crawl (green). Once the turn's crawls are all resolved
+    // (READY) there is none, so every box reads as done (grey).
+    val current = if (game.crawling()) game.nextCrawl()?.second else null
+    // Only parties that take part in the crawl: those that already crawled, the
+    // one about to, and (mid-crawl) those still enticed into a dungeon. Parties
+    // that stay in town are shown in the town strip, not here.
+    val parties = game.crawlOrder().filter { p ->
+        game.crawlOutcomeFor(p) != null ||
+            p === current ||
+            (game.crawling() && EnticePhase.targetFor(game, p) != null)
+    }
     if (parties.isEmpty()) {
         Spacer(Modifier.height(CrawlRowHeight))   // reserve space between phases
         return
     }
-    // The party about to crawl (green). Once the turn's crawls are all resolved
-    // (READY, or the last party animating) there is none, so every box reads as
-    // done (grey) and the label settles on the final count.
-    val current = if (game.crawling()) game.nextCrawl()?.second else null
     val currentIdx = current?.let { p -> parties.indexOfFirst { it === p } } ?: parties.size
     val label = if (currentIdx in parties.indices) "Party ${currentIdx + 1} of ${parties.size}"
                 else "${parties.size} ${if (parties.size == 1) "party" else "parties"} this turn"
