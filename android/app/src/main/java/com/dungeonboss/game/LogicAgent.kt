@@ -24,13 +24,22 @@ import kotlin.random.Random
  */
 class LogicAgent(
     private val logic: Map<String, List<Map<String, Any?>>> = emptyMap(),
-    private val rng: Random = Random.Default
+    private val rng: Random = Random.Default,
+    private val abilityPolicy: AbilityPolicy = AbilityPolicy.NONE
 ) : Agent {
     private var game: Game? = null
 
     override fun attach(game: Game) {
         this.game = game
     }
+
+    /**
+     * The pre-crawl ability plays this agent makes: [AbilityChooser] weighs each
+     * ability card the actor holds against [abilityPolicy] by forecasting the
+     * crawl, and returns the plays that clear their objective's threshold.
+     */
+    override fun preCrawlPlays(context: PreCrawlContext): List<AbilityPlay> =
+        AbilityChooser.choose(context, abilityPolicy)
 
     override fun choose(decision: Decision): Pair<String?, Any?> {
         val candidates = candidatesFor(decision)
@@ -174,7 +183,7 @@ class LogicAgent(
             input.use {
                 @Suppress("UNCHECKED_CAST")
                 val data = (Yaml().load<Any?>(it) as? Map<String, Any?>) ?: emptyMap()
-                return LogicAgent(parse(data), rng)
+                return LogicAgent(parse(data), rng, AbilityPolicy.from(Effects.mapOf(data["ai_abilities"])))
             }
         }
 

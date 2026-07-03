@@ -55,3 +55,47 @@ build_room:
   - prefer: fewest_wounds                    # then to let the fewest survive
   - prefer: highest_avg_damage               # then to hurt the heroes the most
   - prefer: highest_damage                   # last resort (e.g. empty town): raw power
+
+# ---------------------------------------------------------------------------
+# Ability cards (the pre-crawl window). These are NOT tie-break chains like the
+# decision keys above: an ability is judged on its own. Just before a party
+# crawls, each automated player forecasts the pending crawl (a dry-run, so
+# nothing is mutated) WITH and WITHOUT each card it holds, and spends the card
+# only when one of the objectives listed for it clears its threshold. The AI
+# never plays a card in a direction that would help the dungeon it is crawling
+# against, and never wastes one for too small a gain.
+#
+# Who plays what falls out of the objectives a card lists:
+#   prevent_self_wound: true    the crawl OWNER plays it to stop a hero surviving
+#                               its own dungeon (a survivor costs the owner a
+#                               wound). Buffs — Bolster (+damage), Counter (no
+#                               reduction) — do this.
+#   wound_winning_opponent: true  an OPPONENT plays it to make a hero survive the
+#                               owner's dungeon, handing that owner a wound — but
+#                               only when the owner is "winning" (points at or
+#                               above winning_opponent_points), so disruption is
+#                               spent on real threats, not everyone.
+#   deny_opponent_points: N     an OPPONENT plays it when it stops the owner
+#                               scoring at least N points (N fewer hero deaths).
+#                               e.g. Retreat at 3 fires when it saves 3+ points,
+#                               but not when it would only save 2.
+#   refill_room_hand_below: N   a no-target utility card (Blueprints) the player
+#                               plays whenever its room hand holds fewer than N.
+#
+# Opponents act first (disruption), then the owner has the last word (buffs).
+ai_abilities:
+  # An opponent counts as "winning" — worth spending a wound-dealing card on —
+  # once their points reach this.
+  winning_opponent_points: 5
+  cards:
+    ability_extra_damage:        # Bolster (+4 damage to a room)
+      prevent_self_wound: true
+    ability_full_damage:         # Counter (a room's damage cannot be reduced)
+      prevent_self_wound: true
+    ability_no_damage:           # Sabotage (a room deals 0)
+      wound_winning_opponent: true
+      deny_opponent_points: 2
+    ability_return_to_town:      # Retreat (the party turns back at a room)
+      deny_opponent_points: 3
+    ability_draw_rooms:          # Blueprints (draw 2 room cards)
+      refill_room_hand_below: 3

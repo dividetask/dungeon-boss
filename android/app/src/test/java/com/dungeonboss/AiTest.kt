@@ -1,6 +1,10 @@
 package com.dungeonboss
 
 import com.dungeonboss.data.CardLibrary
+import com.dungeonboss.game.AbilityChooser
+import com.dungeonboss.game.AbilityPlay
+import com.dungeonboss.game.AbilityPolicy
+import com.dungeonboss.game.CrawlModifiers
 import com.dungeonboss.game.Decision
 import com.dungeonboss.game.DecisionKind
 import com.dungeonboss.game.Dungeon
@@ -9,6 +13,8 @@ import com.dungeonboss.game.Game
 import com.dungeonboss.game.LogicAgent
 import com.dungeonboss.game.Party
 import com.dungeonboss.game.Player
+import com.dungeonboss.game.PreCrawlContext
+import com.dungeonboss.model.AbilityCard
 import com.dungeonboss.model.Bait
 import com.dungeonboss.model.BaitIcons
 import com.dungeonboss.model.Boss
@@ -16,6 +22,7 @@ import com.dungeonboss.model.Hero
 import com.dungeonboss.model.Room
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 import kotlin.random.Random
 
@@ -178,5 +185,149 @@ class AiTest {
             Random(1)
         )
         assertEquals("hand0_9", a.choose(decision).first)
+    }
+
+    // --- pre-crawl ability plays (AbilityChooser + AbilityPolicy) -----------
+
+    private fun ability(id: String, effect: Map<String, Any?>) =
+        AbilityCard(id = id, name = id, effect = effect)
+
+    private fun bolster() = ability("ability_extra_damage", mapOf("add_damage" to 4))
+    private fun sabotage() = ability("ability_no_damage", mapOf("zero" to true))
+    private fun retreat() = ability("ability_return_to_town", mapOf("retreat" to true))
+    private fun blueprints() = ability("ability_draw_rooms", mapOf("draw_rooms" to 2))
+
+    private fun policy(winning: Int = 5, cards: Map<String, AbilityPolicy.CardPolicy> = emptyMap()) =
+        AbilityPolicy(winning, cards)
+
+    private fun context(actor: Player, owner: Player, party: Party, mods: CrawlModifiers = CrawlModifiers()) =
+        PreCrawlContext(actor, owner, party, owner.dungeon!!, owner.points, mods)
+
+    @Test
+    fun ownerPlaysBolsterToPreventItsOwnWound() {
+        val owner = Player("owner")
+        owner.dungeon = dungeon(0, listOf(5)) // one room deals 5, boss 0
+        owner.abilityHand.add(bolster())
+        val party = Party(listOf(hero("h", 8))) // survives 5 -> the owner would be wounded
+        val pol = policy(cards = mapOf("ability_extra_damage" to AbilityPolicy.CardPolicy(preventSelfWound = true)))
+
+        val plays = AbilityChooser.choose(context(owner, owner, party), pol)
+
+        assertEquals(1, plays.size)
+        assertEquals(AbilityPlay("ability_extra_damage", 0), plays[0]) // +4 makes the room (5->9) lethal
+    }
+
+    @Test
+    fun ownerHoldsBolsterWhenNoHeroWouldSurvive() {
+        val owner = Player("owner")
+        owner.dungeon = dungeon(0, listOf(5))
+        owner.abilityHand.add(bolster())
+        val party = Party(listOf(hero("h", 3))) // dies to 5 already: no wound to prevent
+        val pol = policy(cards = mapOf("ability_extra_damage" to AbilityPolicy.CardPolicy(preventSelfWound = true)))
+
+        assertEquals(emptyList<AbilityPlay>(), AbilityChooser.choose(context(owner, owner, party), pol))
+    }
+
+    @Test
+    fun opponentRetreatsToDenyThreeOrMorePoints() {
+        val owner = Player("owner")
+        owner.dungeon = dungeon(0, listOf(10)) // a 10-lead room; overkill cascades along the party
+        val actor = Player("bot")
+        actor.abilityHand.add(retreat())
+        val party = Party(listOf(hero("a", 1), hero("b", 1), hero("c", 1))) // all three die
+        val pol = policy(cards = mapOf("ability_return_to_town" to AbilityPolicy.CardPolicy(denyOpponentPoints = 3)))
+
+        val plays = AbilityChooser.choose(context(actor, owner, party), pol)
+
+        assertEquals(1, plays.size)
+        assertEquals(AbilityPlay("ability_return_to_town", 0), plays[0]) // turn back at the entrance: denies all 3
+    }
+
+    @Test
+    fun opponentHoldsRetreatWhenItWouldSaveOnlyTwoPoints() {
+        val owner = Player("owner")
+        owner.dungeon = dungeon(0, listOf(10))
+        val actor = Player("bot")
+        actor.abilityHand.add(retreat())
+        val party = Party(listOf(hero("a", 1), hero("b", 1))) // only two die: below the 3-point threshold
+        val pol = policy(cards = mapOf("ability_return_to_town" to AbilityPolicy.CardPolicy(denyOpponentPoints = 3)))
+
+        assertEquals(emptyList<AbilityPlay>(), AbilityChooser.choose(context(actor, owner, party), pol))
+    }
+
+    @Test
+    fun opponentSabotagesToWoundAWinningOwner() {
+        val owner = Player("owner")
+        owner.points = 6                       // winning (>= 5); the boss adds +6
+        owner.dungeon = dungeon(0, listOf(12)) // a lethal room
+        val actor = Player("bot")
+        actor.abilityHand.add(sabotage())
+        val party = Party(listOf(hero("h", 10))) // dies to the room, so no wound yet
+        val pol = policy(
+            winning = 5,
+            cards = mapOf("ability_no_damage" to AbilityPolicy.CardPolicy(woundWinningOpponent = true, denyOpponentPoints = 2))
+        )
+
+        val plays = AbilityChooser.choose(context(actor, owner, party), pol)
+
+        assertEquals(1, plays.size)
+        assertEquals(AbilityPlay("ability_no_damage", 0), plays[0]) // zero the room; hero survives the boss -> wound
+    }
+
+    @Test
+    fun opponentHoldsSabotageAgainstANonWinningOwner() {
+        val owner = Player("owner")
+        owner.points = 0                        // not winning
+        owner.dungeon = dungeon(0, listOf(12))
+        val actor = Player("bot")
+        actor.abilityHand.add(sabotage())
+        val party = Party(listOf(hero("h", 10)))
+        val pol = policy(
+            winning = 5,
+            cards = mapOf("ability_no_damage" to AbilityPolicy.CardPolicy(woundWinningOpponent = true, denyOpponentPoints = 5))
+        )
+
+        assertEquals(emptyList<AbilityPlay>(), AbilityChooser.choose(context(actor, owner, party), pol))
+    }
+
+    @Test
+    fun playsBlueprintsWhenTheRoomHandIsThin() {
+        val owner = Player("owner")
+        owner.dungeon = dungeon(0, listOf(3))
+        val actor = Player("bot")
+        actor.abilityHand.add(blueprints()) // actor's room hand is empty (< 3)
+        val party = Party(listOf(hero("h", 3)))
+        val pol = policy(cards = mapOf("ability_draw_rooms" to AbilityPolicy.CardPolicy(refillRoomHandBelow = 3)))
+
+        val plays = AbilityChooser.choose(context(actor, owner, party), pol)
+
+        assertEquals(listOf(AbilityPlay("ability_draw_rooms", null)), plays)
+    }
+
+    @Test
+    fun noConfiguredPolicyPlaysNothing() {
+        val owner = Player("owner")
+        owner.dungeon = dungeon(0, listOf(5))
+        owner.abilityHand.add(bolster())
+        val party = Party(listOf(hero("h", 8)))
+
+        assertEquals(emptyList<AbilityPlay>(), AbilityChooser.choose(context(owner, owner, party), AbilityPolicy.NONE))
+    }
+
+    @Test
+    fun abilityPolicyParsesFromYamlShape() {
+        val raw = mapOf(
+            "winning_opponent_points" to 7,
+            "cards" to mapOf(
+                "ability_return_to_town" to mapOf("deny_opponent_points" to 3),
+                "ability_extra_damage" to mapOf("prevent_self_wound" to true)
+            )
+        )
+        val pol = AbilityPolicy.from(raw)
+
+        assertEquals(7, pol.winningOpponentPoints)
+        assertEquals(3, pol.forCard("ability_return_to_town")?.denyOpponentPoints)
+        assertEquals(true, pol.forCard("ability_extra_damage")?.preventSelfWound)
+        assertNull(pol.forCard("ability_no_damage")) // not configured
     }
 }

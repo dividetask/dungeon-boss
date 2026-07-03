@@ -185,8 +185,10 @@ class Game(
     /**
      * Send the current party into its dungeon (one crawl per call), then work out
      * which party (if any) enters next — re-checking courage against each owner's
-     * now-current points. Just before resolving, an automated owner takes its
-     * pre-crawl actions (discard-to-boost) and the accumulated modifiers apply.
+     * now-current points. Just before resolving, the automated players take their
+     * pre-crawl actions: the owner may discard-to-boost, and every automated
+     * player may play ability cards ([agentAbilities]); the accumulated modifiers
+     * then apply.
      */
     fun sendNextParty(): Game {
         val (player, party) = currentCrawl ?: return this
@@ -194,6 +196,7 @@ class Game(
         undoablePlacement = null // a crawl is resolving; the build can no longer be undone
         undoableAbilities.clear() // ability plays apply to this crawl; no undo after it resolves
         agentPreCrawl(player)
+        agentAbilities(player, party)
         val outcome = GauntletPhase.resolveParty(this, player, party, crawlModifiers)
         lastOutcomes = listOf(outcome)
         turnOutcomes[party] = outcome    // retained for the crawl-progress row's fate markers
@@ -653,10 +656,7 @@ class Game(
         }
     }
 
-    /**
-     * An automated owner uses discard-to-boost on its own boostable rooms before
-     * a crawl (it does not play ability cards yet).
-     */
+    /** An automated owner uses discard-to-boost on its own boostable rooms before a crawl. */
     private fun agentPreCrawl(owner: Player) {
         if (!automated(owner)) return
         val dungeon = owner.dungeon ?: return
@@ -665,6 +665,26 @@ class Game(
             if (crawlModifiers.boosted(i)) return@forEachIndexed
             val spare = owner.roomHand.firstOrNull()
             if (spare != null && rng.nextDouble() < 0.5) boostRoom(spare.id, i)
+        }
+    }
+
+    /**
+     * Every automated player's pre-crawl ability plays. Opponents act first
+     * (disruption — Sabotage / Retreat / Blueprints against the crawl in
+     * progress), then the owner has the last word (buffs to stop a hero surviving
+     * its dungeon). Each agent chooses its plays from its policy by forecasting
+     * the crawl; the plays fold into [crawlModifiers] via [playAbility]. A
+     * simplified stand-in for the full turn-based Ability priority loop
+     * (docs/phases.md), evaluated against the modifiers assembled so far
+     * (including any the human already played).
+     */
+    private fun agentAbilities(owner: Player, party: Party) {
+        val dungeon = owner.dungeon ?: return
+        val order = livingPlayers().filter { it !== owner } + owner
+        for (actor in order) {
+            val agent = agents[actor] ?: continue
+            val context = PreCrawlContext(actor, owner, party, dungeon, owner.points, crawlModifiers)
+            agent.preCrawlPlays(context).forEach { playAbility(actor, it.cardId, it.target) }
         }
     }
 
