@@ -39,9 +39,10 @@ private val CARD_WIDTH = 116.dp
 // Board cards (boss / dungeon room) must still fit a two-line boss name plus its
 // damage + optional breakdown line, so they only shrink modestly.
 private val CARD_HEIGHT = 64.dp
-// Hand cards (rooms / abilities) carry just a heading and a stat line, so they
-// drop to about a hero chip's height — that is where the vertical room is won.
-private val HAND_CARD_HEIGHT = 46.dp
+// Hand cards (rooms / abilities) carry a heading plus a damage + bait line. The
+// bait pips render as pills (taller than plain text), so the card needs enough
+// height to show them fully — a touch shorter than the board card, no more.
+private val HAND_CARD_HEIGHT = 58.dp
 private val CARD_SHAPE = RoundedCornerShape(10.dp)
 
 /**
