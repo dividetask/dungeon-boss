@@ -38,6 +38,9 @@ import org.json.JSONObject
 class Game(
     library: CardLibrary,
     playerNames: List<String>,
+    // Every shuffle and random choice in the engine draws from this one generator.
+    // For deterministic (lockstep) play, construct via [Game.seeded] so all devices
+    // share the same sequence. See docs/networking.md.
     val rng: Random = Random.Default,
     agentsByName: Map<String, Agent> = emptyMap()
 ) {
@@ -782,6 +785,21 @@ class Game(
 
     companion object {
         const val SAVE_VERSION = 1
+
+        /**
+         * Construct a game whose every shuffle and random choice is driven by
+         * [seed]. Two devices that build a game from the SAME seed and apply the
+         * same player decisions in the same order advance through identical state
+         * — the determinism contract that online lockstep play relies on (see
+         * docs/networking.md). Kotlin's `Random(seed)` is a platform-independent
+         * generator, so a given seed yields the same sequence on every device.
+         */
+        fun seeded(
+            library: CardLibrary,
+            playerNames: List<String>,
+            seed: Long,
+            agentsByName: Map<String, Agent> = emptyMap()
+        ): Game = Game(library, playerNames, Random(seed), agentsByName)
 
         /**
          * Rebuild a game from an [exportJson] snapshot, minting fresh card

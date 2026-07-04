@@ -204,9 +204,13 @@ host-authoritative is the documented fallback.
 
 ## Build order (suggested)
 
-1. **Determinism pass** on the engine: route all randomness through one injected
-   seeded generator; add `seed` to `Game` construction; make iteration orders
-   explicit. (Testable offline: same seed + same inputs → identical end state.)
+1. **Determinism pass** on the engine — *(started, Android)*: route all randomness
+   through one injected seeded generator; add `seed` to `Game` construction; make
+   iteration orders explicit. Testable offline: same seed + same inputs → identical
+   end state. **Landed:** `Game.seeded(seed)` (the Kotlin engine already threaded a
+   single `rng` through every deck, `PartyNamer`, and the auto-boost roll) plus
+   `NetworkDeterminismTest` — same-seed shuffle/deal equality and a full seeded
+   playthrough that stays byte-identical (via `exportJson`) to game over.
 2. **`RemoteAgent`** + the local-broadcast rule against an in-memory fake
    transport (two `Game`s in one process kept in lockstep).
 3. **`NetworkTransport` (Firebase)** + `MoveMessage` serialization.
