@@ -1,4 +1,3 @@
-Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :app:preBuild UP-TO-DATE
 > Task :app:preDebugBuild UP-TO-DATE
 > Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
@@ -33,7 +32,10 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :app:validateSigningDebug UP-TO-DATE
 > Task :app:writeDebugAppMetadata UP-TO-DATE
 > Task :app:writeDebugSigningConfigVersions UP-TO-DATE
+
 > Task :app:compileDebugKotlin
+w: file:///home/brett/Projects/dungeon-boss/android/app/src/main/java/com/dungeonboss/ui/GameScreen.kt:604:61 Condition is always 'true'.
+
 > Task :app:compileDebugJavaWithJavac NO-SOURCE
 > Task :app:dexBuilderDebug
 > Task :app:mergeDebugGlobalSynthetics UP-TO-DATE
@@ -44,5 +46,5 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :app:createDebugApkListingFileRedirect UP-TO-DATE
 > Task :app:assembleDebug
 
-BUILD SUCCESSFUL in 11s
+BUILD SUCCESSFUL in 3s
 36 actionable tasks: 6 executed, 30 up-to-date
