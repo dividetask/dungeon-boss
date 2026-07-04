@@ -114,7 +114,10 @@ On a quiet round (no party enters) players may play Blueprints, then continue.
 A player may instead be controlled by an **agent** (e.g. `RandomAgent`). `Game`
 is given a map of player → agent; decisions for an agent-controlled player are
 resolved by the agent automatically and never surface to the human. The web app
-uses this to make Player 2 a random computer opponent.
+uses this to make Player 2 a random computer opponent. This same seam is where a
+**remote human** plugs in for online play — a `RemoteAgent` that relays another
+device's choice — so `Game` needs no per-player networking awareness. See
+[networking.md](networking.md) *(proposed, not yet built)*.
 
 | Class          | Responsibility                                                        |
 |----------------|-----------------------------------------------------------------------|

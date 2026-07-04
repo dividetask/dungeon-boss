@@ -23,6 +23,9 @@ described here. When a rule changes, change it here first.
   the controls available in each.
 - **[ai.md](ai.md)** — The computer opponent (`LogicAgent`): its data-driven
   heuristics file and the comparator vocabulary.
+- **[networking.md](networking.md)** — *(proposed, not yet built)* Online
+  multiplayer & matchmaking: non-authoritative **lockstep** over a dumb relay,
+  the `RemoteAgent` seam, determinism rules, and reconnect-by-replay.
 
 ## Scope
 
