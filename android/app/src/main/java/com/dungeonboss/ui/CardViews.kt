@@ -38,7 +38,7 @@ import com.dungeonboss.model.Room
 private val CARD_WIDTH = 116.dp
 // Board cards (boss / dungeon room) must still fit a two-line boss name plus its
 // damage + optional breakdown line, so they only shrink modestly.
-private val CARD_HEIGHT = 64.dp
+internal val CARD_HEIGHT = 64.dp
 // Hand cards (rooms / abilities) carry a heading plus a damage + bait line. The
 // bait pips render as pills (taller than plain text), so the card needs enough
 // height to show them fully — a touch shorter than the board card, no more.

@@ -1202,21 +1202,24 @@ internal fun DungeonBoard(
     }
 }
 
-/** A badge showing a dungeon owner's current point total, shown beside the boss. */
+/**
+ * A compact, card-height badge for the dungeon owner's current point total, shown
+ * beside the boss. Kept narrow on purpose — room for more owner info later.
+ */
 @Composable
 private fun PointsBadge(points: Int) {
-    Box(
+    Column(
         Modifier
+            .height(CARD_HEIGHT)
             .clip(RoundedCornerShape(8.dp))
             .background(Palette.HighlightFill)
             .border(1.dp, Palette.Highlight, RoundedCornerShape(8.dp))
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .padding(horizontal = 7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("🪙", fontSize = 16.sp)
-            Text("$points", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Text("points", fontSize = 9.sp, color = Palette.SubText)
-        }
+        Text("🪙", fontSize = 11.sp)
+        Text("$points", fontSize = 17.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1640,7 +1643,7 @@ private fun AdvanceBar(
             // Left: a one-line status of what just happened / what to do next
             // (e.g. "Necromancer played Retreat", or the crawl that just resolved).
             Text(
-                crawlStatus(game, reviewingResult),
+                crawlStatus(game, reviewingResult, awaitingCrawlStart),
                 modifier = Modifier.weight(1f),
                 fontSize = 13.sp,
                 color = Palette.SubText,
@@ -1709,7 +1712,11 @@ private fun Hint(text: String) {
  * played, or the crawl that just resolved) or what to do next. Empty for phases
  * where the action button's own label already says it all.
  */
-private fun crawlStatus(game: Game, reviewingResult: Boolean): String {
+private fun crawlStatus(game: Game, reviewingResult: Boolean, awaitingCrawlStart: Boolean): String {
+    // Before the first crawl the player reviews their built dungeon and confirms it.
+    if (awaitingCrawlStart && game.crawling()) {
+        return "Confirm your dungeon, then Continue"
+    }
     if (reviewingResult) {
         val o = game.lastOutcomes.firstOrNull() ?: return ""
         val where = playerLabel(game, o.player)
