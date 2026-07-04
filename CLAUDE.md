@@ -32,10 +32,12 @@ they cannot share source code. They share the **`docs/` specification** and the
   and **courage / parties** (afraid heroes band together). The turn runs
   **Arrival → Discard → Draw → Build → Crawl (Entice → Ability → Gauntlet) →
   Recharge** over a **5-slot dungeon** (see [docs/phases.md](docs/phases.md)).
-- **Documented but not yet built:** the **Ability** priority loop (turn-based
-  play/pass) is specced as a **TODO**; the existing pre-Gauntlet ability/boost
-  interaction stands in for now. The **gameplay effect of a room's level** (from
-  room-card upgrades) is being implemented on a separate branch.
+- **Recently built:** the **Ability** priority loop (turn-based play/pass, with
+  each played card shown beneath its target room and every player — including the
+  computer opponents — able to respond) is implemented in the **Android** client;
+  the webapp reference still uses a single pre-crawl pass. The **gameplay effect
+  of a room's level** (from room-card upgrades) is being implemented on a
+  separate branch.
 - **Still ignored:** **boss/room ability *text*** beyond the declarative
   `effect` data already supported.
 

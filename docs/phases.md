@@ -124,27 +124,31 @@ consolidated in the Recharge phase.
 
 ### 7b. Ability
 
-> **TODO (not yet implemented).** The intended Ability step is a turn-based
-> **priority loop**: players take turns either **playing one ability or
-> passing**, and **whenever an ability is played every player is given another
-> opportunity** to respond, until all players pass consecutively. This is
-> documented here for the target design but is **not built yet**.
->
-> For now, the existing pre-Gauntlet interaction is retained: before a party
-> crawls, players may play ability cards and the dungeon owner may
-> discard-to-boost a room (effects last only that crawl):
->
-> - **Play ability cards** — any player, on any dungeon's crawl, one-shot
->   (discarded after use): Bolster (+2 to a room), Counter (a room
->   becomes unreducible), Sabotage (a room deals 0), Retreat (**target a room**:
->   the party turns back there — rooms before it still resolve and score, the
->   rest and the boss are skipped, and the owner takes no wound), Blueprints (the
->   player draws 2 room cards).
-> - **Discard-to-boost** — the dungeon owner may discard room cards to temporarily
->   raise a boostable room's damage for that crawl only. Each discarded card adds
->   the room's `discard_lead_damage` / `discard_all_damage` (e.g. **+2** to
->   Power Word or Undead Hands); boosts **stack** and do not change the room's
->   level or bait.
+Before a party crawls, its pre-crawl window runs as a turn-based **priority
+loop**. The player with priority may **play one ability or pass**; **whenever an
+ability is played every player is given another opportunity** to respond, and the
+crawl only resolves once **all players pass consecutively**. Priority runs in
+player order, and each ability played is shown **beneath its target room** so
+every player can see what was used and answer it. Effects last only that crawl.
+
+- **Play ability cards** — any player, one-shot (discarded after use): Bolster
+  (+damage to a room), Counter (a room becomes unreducible), Sabotage (a room
+  deals 0), Retreat (**target a room**: the party turns back there — rooms before
+  it still resolve and score, the rest and the boss are skipped, and the owner
+  takes no wound), Blueprints (the player draws 2 room cards). A card is
+  **committed** once played: it opens the window for others to respond, so it
+  cannot be taken back.
+- **Discard-to-boost** — the dungeon owner may discard room cards to temporarily
+  raise a boostable room's damage for that crawl only. Each discarded card adds
+  the room's `discard_lead_damage` / `discard_all_damage` (e.g. **+2** to
+  Power Word or Undead Hands); boosts **stack** and do not change the room's
+  level or bait. (The boost is the owner's own action, separate from the ability
+  priority loop.)
+
+> **Computer opponents** take their priority turns automatically — see
+> [ai.md](ai.md#ability-cards-pre-crawl) for how the AI decides whether to play
+> or pass. The turn-based loop is implemented in the **Android** client; the
+> webapp reference implementation still uses a single pre-crawl pass.
 
 ### 7c. Gauntlet
 

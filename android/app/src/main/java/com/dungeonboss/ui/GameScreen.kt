@@ -304,7 +304,7 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         },
                         onDecide = { c, t -> vm.decide(c, t) },
                         onNextTurn = { vm.nextTurn() },
-                        onSend = { vm.sendNextParty() },
+                        onSend = { vm.passPriority() },
                         onNewGame = { vm.newGame(playerCount) },
                         onUndo = { vm.undoDiscard() },
                         onUndoBoss = { vm.undoBossChoice() },
@@ -1128,7 +1128,10 @@ internal fun DungeonBoard(
                 val points = applicablePoints(game, player)
                 // Per-crawl ability/boost modifiers apply only to the dungeon whose
                 // party is in the pre-crawl window — fold them into its damage display.
-                val mods = if (game.nextCrawl()?.first === player) game.crawlMods() else null
+                val crawlHere = game.nextCrawl()?.first === player
+                val mods = if (crawlHere) game.crawlMods() else null
+                // Ability cards played on this crawl, shown beneath their target room.
+                val plays = if (crawlHere) game.crawlPlays() else emptyList()
                 // Render all 5 slots in order; empties show as gaps (tappable while
                 // building). An occupied slot's ENCOUNTER index is its position among
                 // the occupied rooms (what the crawl/boost/damage code uses).
@@ -1164,6 +1167,7 @@ internal fun DungeonBoard(
                             }
                             DeathMarkers(prediction, ei)
                             FledMarkers(prediction, mods?.retreatIndex(), ei)
+                            PlayedAbilities(plays, ei, game)
                         }
                     }
                 }
@@ -1178,6 +1182,7 @@ internal fun DungeonBoard(
                         baitHighlight = baitHighlight, baitGlow = baitGlow)
                     DeathMarkers(prediction, bossIndex)
                     SurvivorMarkers(prediction, retreated = mods?.retreating() == true)
+                    PlayedAbilities(plays, bossIndex, game)
                 }
             }
         }
@@ -1423,6 +1428,35 @@ private fun FledMarkers(prediction: PartyCrawlResolver.Result?, retreatIndex: In
     }
 }
 
+/**
+ * The ability cards played on this encounter in the current pre-crawl window,
+ * stacked beneath the room so it is clear which player used what — and, since the
+ * window stays open, that others may respond in kind.
+ */
+@Composable
+private fun PlayedAbilities(plays: List<Game.AbilityPlayRecord>, encounterIndex: Int, game: Game) {
+    val here = plays.filter { it.targetIndex == encounterIndex }
+    if (here.isEmpty()) return
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        here.forEach { rec ->
+            val who = if (game.automated(rec.player)) "P${game.players.indexOf(rec.player) + 1}" else "You"
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Palette.AbilityBg)
+                    .border(1.dp, Palette.AbilityBorder, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            ) {
+                Text("✨ $who · ${rec.card.name}", fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold, color = Color(0xFF6B5310))
+            }
+        }
+    }
+}
+
 @Composable
 private fun GameOverBanner(@Suppress("UNUSED_PARAMETER") tick: Int, game: Game) {
     Column(
@@ -1517,7 +1551,14 @@ private fun AdvanceBar(
         game.quiet() -> Triple("Continue ▶", true, onContinueQuiet)
         // After building, pause on your dungeon; Continue begins the crawl.
         awaitingCrawlStart && game.crawling() -> Triple("Continue ▶", true, onBeginCrawl)
-        game.crawling() && game.nextCrawl() != null -> Triple("Send ▶", true, onSend)
+        // Pre-crawl priority window: this button is the human's pass. If they hold
+        // an ability or a card has already been played (something to answer), it
+        // reads "Pass" — passing yields priority and the crawl resolves only once
+        // everyone passes in a row; otherwise it plainly "Send"s the party.
+        game.crawling() && game.nextCrawl() != null -> {
+            val canRespond = human.abilityHand.isNotEmpty() || game.crawlPlays().isNotEmpty()
+            Triple(if (canRespond) "Pass ▶" else "Send ▶", true, onSend)
+        }
         game.over() -> Triple("", false, noop)
         setupDone -> Triple("Start ▶", true, onNextTurn)
         game.ready() -> Triple("Next turn ▶", true, onNextTurn)

@@ -26,9 +26,11 @@ import org.json.JSONObject
  * decisions and crawls. The player makes every choice the rules call for; the
  * automatic phases (Arrival, Bait, Crawl) run on their own. Bait is combined
  * with Crawl: parties are evaluated for entry one at a time, in town order, as
- * points change. Just before each crawl the owner may play ability cards or
- * discard-to-boost a room. Orchestration only — all rules live in the
- * phase/resolver classes. Mirrors `webapp/lib/game.rb`.
+ * points change. Each party's pre-crawl window is a turn-based ability priority
+ * loop ([passPriority]/[playAbility]): the player with priority plays one ability
+ * or passes, a play lets everyone respond, and the crawl resolves once all pass
+ * in a row (the automated players are driven by [driveCrawl]). Orchestration
+ * only — all rules live in the phase/resolver classes. Mirrors `webapp/lib/game.rb`.
  *
  * A player may instead be controlled by an automated [Agent] (LogicAgent for the
  * heuristic opponent, or RandomAgent as a baseline); decisions for an
@@ -113,6 +115,20 @@ class Game(
     // The human's ability plays this pre-crawl window, newest last — for undo.
     private val undoableAbilities = ArrayDeque<UndoableAbility>()
 
+    // --- Ability priority loop (the pre-crawl window). Each party's window is a
+    // turn-based loop: the player with priority may play one ability or pass; a
+    // play resets the pass streak so everyone gets another chance, and the crawl
+    // resolves once every living player passes in a row (docs/phases.md 7b). ---
+    private var priorityOrder: List<Player> = emptyList() // living players, board order
+    private var priorityIndex: Int = 0                    // whose turn it is to act or pass
+    private var consecutivePasses: Int = 0                // players who passed in a row this window
+    // The ability cards played on the current crawl, in order, for display (each
+    // shown beneath its target room). Cleared when a new window opens.
+    private val crawlPlays = mutableListOf<AbilityPlayRecord>()
+
+    /** One ability card played on the current crawl: who played it, and its target encounter (null if none). */
+    data class AbilityPlayRecord(val player: Player, val card: AbilityCard, val targetIndex: Int?)
+
     /** A captured build placement so it can be fully reversed (see [undoPlacement]). */
     private class UndoablePlacement(
         val player: Player,
@@ -183,35 +199,29 @@ class Game(
     }
 
     /**
-     * Send the current party into its dungeon (one crawl per call), then work out
-     * which party (if any) enters next — re-checking courage against each owner's
-     * now-current points. Just before resolving, the automated players take their
-     * pre-crawl actions: the owner may discard-to-boost, and every automated
-     * player may play ability cards ([agentAbilities]); the accumulated modifiers
-     * then apply.
+     * The player who currently holds priority in the pre-crawl window (may play
+     * one ability or pass), or null when no window is open or it has closed. The
+     * crawl loop auto-runs automated players, so whenever this returns the human
+     * the UI should let them play or [passPriority].
      */
-    fun sendNextParty(): Game {
-        val (player, party) = currentCrawl ?: return this
+    fun priorityHolder(): Player? {
+        if (currentCrawl == null || priorityOrder.isEmpty()) return null
+        if (consecutivePasses >= priorityOrder.size) return null
+        return priorityOrder[priorityIndex]
+    }
 
-        undoablePlacement = null // a crawl is resolving; the build can no longer be undone
-        undoableAbilities.clear() // ability plays apply to this crawl; no undo after it resolves
-        agentPreCrawl(player)
-        agentAbilities(player, party)
-        val outcome = GauntletPhase.resolveParty(this, player, party, crawlModifiers)
-        lastOutcomes = listOf(outcome)
-        turnOutcomes[party] = outcome    // retained for the crawl-progress row's fate markers
-        crawlSurvivors.addAll(outcome.result.survivors) // survivors level up in Recharge
-        applyDeathDraws(player, outcome.result)
-        currentCrawl = null
+    /** The ability cards played on the current crawl, in order (for display under rooms). */
+    fun crawlPlays(): List<AbilityPlayRecord> = crawlPlays.toList()
 
-        if (Scoreboard.over(players)) {
-            endedBy = player // the crawl's owner ended the game (gains the bonus)
-            winner = Scoreboard.winner(players, player)
-            crawlQueue.clear()
-            stage = Stage.OVER
-        } else {
-            advanceToNextCrawl()
-        }
+    /**
+     * The player with priority passes. When every living player has passed in a
+     * row the window closes and the crawl resolves; otherwise priority moves on.
+     * After the human passes, the loop runs the automated players' responses.
+     */
+    fun passPriority(player: Player): Game {
+        if (player !== priorityHolder()) return this
+        passOf()
+        driveCrawl()
         return this
     }
 
@@ -219,44 +229,74 @@ class Game(
     fun crawlMods(): CrawlModifiers = crawlModifiers
 
     /**
-     * Play an ability card from [player]'s hand on the current crawl. [target] is
-     * a room index in the crawled dungeon, or null for non-targeting cards.
+     * Play an ability card from [player]'s hand. During a crawl the player must
+     * hold priority; the play takes effect, records itself for display, resets the
+     * pass streak so others may respond, and the loop then runs the automated
+     * players' responses. On a quiet round (no crawl) only non-targeting cards
+     * (Blueprints) can be played, outside the priority loop. [target] is a room
+     * index in the crawled dungeon, or null for non-targeting cards.
      */
     fun playAbility(player: Player, cardId: String, target: Any? = null): Game {
-        if (currentCrawl == null && stage != Stage.QUIET) return this
+        if (currentCrawl == null) {
+            if (stage == Stage.QUIET) playQuietAbility(player, cardId)
+            return this
+        }
+        if (player !== priorityHolder()) return this
+        if (player.abilityHand.none { it.id == cardId }) return this
+        applyAbility(player, cardId, target)
+        driveCrawl()
+        return this
+    }
 
-        val card = player.abilityHand.firstOrNull { it.id == cardId } ?: return this
+    /**
+     * Apply one ability play (shared by the human and the agents): spend the card,
+     * fold its effect into [crawlModifiers], record it for display, and hand
+     * priority on with the pass streak reset. Crawl window only.
+     */
+    private fun applyAbility(player: Player, cardId: String, target: Any?) {
+        val card = player.abilityHand.firstOrNull { it.id == cardId } ?: return
         val spec = AbilityEffect.forCard(card)
-        // On a quiet round there is no crawl, so only non-targeting abilities
-        // (Blueprints) can be played; room-targeting cards are not spent.
-        if (currentCrawl == null && spec.targetsRoom()) return this
-
         player.takeAbilityFromHand(cardId)
-        // The card is now spent, so the build can no longer be undone (undoing it
-        // would roll back the turn and lose this play).
-        undoablePlacement = null
-        val modsBefore = crawlModifiers.copy() // for undoing this ability play
-        val room = if (currentCrawl != null) targetIndexOrNull(target) else null
+        undoablePlacement = null // a crawl is being acted on; the build can no longer be undone
+        val room = targetIndexOrNull(target)
         if (room != null) {
             spec.addDamage?.let { crawlModifiers.addDamage(room, it) }
             if (spec.unreducible) crawlModifiers.unreducibleMark(room)
             if (spec.zero) crawlModifiers.zero(room)
             if (spec.retreat) crawlModifiers.retreat(room)
         }
+        spec.drawRooms?.let { drawRoomsFor(player, it) }
+        abilityDeck.discard(card)
+        crawlPlays.add(AbilityPlayRecord(player, card, room))
+        consecutivePasses = 0        // a play gives everyone another chance to respond
+        advancePriority()
+    }
+
+    /** A quiet-round Blueprints play (no crawl, no priority loop); undoable by the human. */
+    private fun playQuietAbility(player: Player, cardId: String) {
+        val card = player.abilityHand.firstOrNull { it.id == cardId } ?: return
+        val spec = AbilityEffect.forCard(card)
+        if (spec.targetsRoom()) return // only non-targeting abilities (Blueprints) on a quiet round
+        player.takeAbilityFromHand(cardId)
+        undoablePlacement = null
+        val modsBefore = crawlModifiers.copy()
         val drawn = spec.drawRooms?.let { drawRoomsFor(player, it) } ?: emptyList()
         abilityDeck.discard(card)
         if (!automated(player)) undoableAbilities.addLast(UndoableAbility(player, card, modsBefore, drawn))
-        return this
     }
 
-    /** True while the human's most recent ability play can still be taken back. */
+    /**
+     * True while the human's most recent ability play can still be taken back —
+     * only on a quiet round. A card played during a crawl is committed: it opens
+     * the priority window for others to respond, so it cannot be unwound.
+     */
     fun canUndoAbility(): Boolean =
-        undoableAbilities.isNotEmpty() && (stage == Stage.CRAWLING || stage == Stage.QUIET)
+        undoableAbilities.isNotEmpty() && stage == Stage.QUIET
 
     /**
-     * Reverse the human's most recent ability play: restore the crawl modifiers as
-     * they were, return any rooms it drew (Blueprints) to the deck, and put the
-     * ability card back in hand. No-op once a crawl has resolved.
+     * Reverse the human's most recent quiet-round ability play: restore the crawl
+     * modifiers as they were, return any rooms it drew (Blueprints) to the deck,
+     * and put the ability card back in hand.
      */
     fun undoAbility(): Game {
         if (!canUndoAbility()) return this
@@ -427,9 +467,10 @@ class Game(
 
     /**
      * Pull parties off the queue (town order) until one enters a dungeon at the
-     * current points, pausing there for the pre-crawl window. Parties that won't
+     * current points, opening its pre-crawl priority window. Parties that won't
      * enter wait for Recruitment. When the queue is exhausted, the turn ends — or,
-     * if nobody attacked, a quiet round begins.
+     * if nobody attacked, a quiet round begins. Callers drive the window with
+     * [driveCrawl].
      */
     private fun advanceToNextCrawl() {
         while (crawlQueue.isNotEmpty()) {
@@ -440,6 +481,7 @@ class Game(
                 crawlModifiers = CrawlModifiers()
                 anyEntered = true
                 attackedThisTurn.add(player) // this dungeon was attacked this turn
+                openPriorityWindow(player)
                 return
             }
             waitingParties.add(party)
@@ -450,6 +492,79 @@ class Game(
             finishTurn()
         } else {
             stage = Stage.QUIET // no hero attacked; players may play Blueprints
+        }
+    }
+
+    /**
+     * Begin a party's pre-crawl priority window: reset the priority loop over the
+     * living players, clear the display log, and let the automated owner take its
+     * discard-to-boost first (a room-card boost, not an ability play).
+     */
+    private fun openPriorityWindow(owner: Player) {
+        priorityOrder = livingPlayers()
+        priorityIndex = 0
+        consecutivePasses = 0
+        crawlPlays.clear()
+        agentPreCrawl(owner)
+    }
+
+    /**
+     * Run the pre-crawl priority loop: give each automated priority holder its
+     * turn (play one ability or pass) and resolve the crawl once everyone has
+     * passed in a row. Returns as soon as it is the human's turn (waiting for the
+     * UI) or the crawl phase ends. After a crawl resolves this advances into the
+     * next window and keeps driving, so one human pass advances exactly one party.
+     */
+    private fun driveCrawl() {
+        while (currentCrawl != null) {
+            if (priorityOrder.isEmpty() || consecutivePasses >= priorityOrder.size) {
+                resolveCurrentCrawl()
+                continue
+            }
+            val actor = priorityOrder[priorityIndex]
+            val agent = agents[actor] ?: return // the human holds priority: wait for the UI
+            val (owner, party) = currentCrawl!!
+            val play = agent.preCrawlPlay(
+                PreCrawlContext(actor, owner, party, owner.dungeon!!, owner.points, crawlModifiers)
+            )
+            if (play != null) applyAbility(actor, play.cardId, play.target) else passOf()
+        }
+    }
+
+    /** The priority holder passes: count it and hand priority to the next player. */
+    private fun passOf() {
+        consecutivePasses += 1
+        advancePriority()
+    }
+
+    /** Move priority to the next player in the window's order (wrapping). */
+    private fun advancePriority() {
+        if (priorityOrder.isNotEmpty()) priorityIndex = (priorityIndex + 1) % priorityOrder.size
+    }
+
+    /**
+     * Close the current window and resolve its crawl: send the party in with the
+     * assembled modifiers, score it, then advance to the next party (which reopens
+     * a fresh window) or end the turn.
+     */
+    private fun resolveCurrentCrawl() {
+        val (player, party) = currentCrawl ?: return
+        undoablePlacement = null
+        undoableAbilities.clear()
+        val outcome = GauntletPhase.resolveParty(this, player, party, crawlModifiers)
+        lastOutcomes = listOf(outcome)
+        turnOutcomes[party] = outcome    // retained for the crawl-progress row's fate markers
+        crawlSurvivors.addAll(outcome.result.survivors) // survivors level up in Recharge
+        applyDeathDraws(player, outcome.result)
+        currentCrawl = null
+
+        if (Scoreboard.over(players)) {
+            endedBy = player // the crawl's owner ended the game (gains the bonus)
+            winner = Scoreboard.winner(players, player)
+            crawlQueue.clear()
+            stage = Stage.OVER
+        } else {
+            advanceToNextCrawl()
         }
     }
 
@@ -651,12 +766,13 @@ class Game(
                 crawlSurvivors.clear()
                 stage = Stage.CRAWLING
                 advanceToNextCrawl()
+                driveCrawl() // run any leading automated priority turns; stop at the human
             }
             else -> Unit
         }
     }
 
-    /** An automated owner uses discard-to-boost on its own boostable rooms before a crawl. */
+    /** An automated owner uses discard-to-boost on its own boostable rooms as the window opens. */
     private fun agentPreCrawl(owner: Player) {
         if (!automated(owner)) return
         val dungeon = owner.dungeon ?: return
@@ -665,26 +781,6 @@ class Game(
             if (crawlModifiers.boosted(i)) return@forEachIndexed
             val spare = owner.roomHand.firstOrNull()
             if (spare != null && rng.nextDouble() < 0.5) boostRoom(spare.id, i)
-        }
-    }
-
-    /**
-     * Every automated player's pre-crawl ability plays. Opponents act first
-     * (disruption — Sabotage / Retreat / Blueprints against the crawl in
-     * progress), then the owner has the last word (buffs to stop a hero surviving
-     * its dungeon). Each agent chooses its plays from its policy by forecasting
-     * the crawl; the plays fold into [crawlModifiers] via [playAbility]. A
-     * simplified stand-in for the full turn-based Ability priority loop
-     * (docs/phases.md), evaluated against the modifiers assembled so far
-     * (including any the human already played).
-     */
-    private fun agentAbilities(owner: Player, party: Party) {
-        val dungeon = owner.dungeon ?: return
-        val order = livingPlayers().filter { it !== owner } + owner
-        for (actor in order) {
-            val agent = agents[actor] ?: continue
-            val context = PreCrawlContext(actor, owner, party, dungeon, owner.points, crawlModifiers)
-            agent.preCrawlPlays(context).forEach { playAbility(actor, it.cardId, it.target) }
         }
     }
 

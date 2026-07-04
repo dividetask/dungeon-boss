@@ -34,12 +34,15 @@ class LogicAgent(
     }
 
     /**
-     * The pre-crawl ability plays this agent makes: [AbilityChooser] weighs each
-     * ability card the actor holds against [abilityPolicy] by forecasting the
-     * crawl, and returns the plays that clear their objective's threshold.
+     * The agent's move when it holds pre-crawl priority: its single best ability
+     * play (or null to pass). [AbilityChooser] weighs each ability the actor holds
+     * against [abilityPolicy] by forecasting the crawl under the modifiers so far;
+     * the first play it returns is the one worth making now. On the agent's next
+     * priority it is re-evaluated against the updated board, so it plays its cards
+     * one at a time and passes once none clears its objective.
      */
-    override fun preCrawlPlays(context: PreCrawlContext): List<AbilityPlay> =
-        AbilityChooser.choose(context, abilityPolicy)
+    override fun preCrawlPlay(context: PreCrawlContext): AbilityPlay? =
+        AbilityChooser.choose(context, abilityPolicy).firstOrNull()
 
     override fun choose(decision: Decision): Pair<String?, Any?> {
         val candidates = candidatesFor(decision)

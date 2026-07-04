@@ -141,13 +141,22 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun sendNextParty() = safe("sendNextParty") {
+    /**
+     * The human passes pre-crawl priority. If every player has now passed in a
+     * row the Game resolves the crawl (and advances into the next party's window);
+     * otherwise the window stays open for the humans to respond. A resolved crawl
+     * (detected as a new outcome) bumps [sendCounter] to play its animation.
+     */
+    fun passPriority() = safe("passPriority") {
         val g = game ?: return@safe
-        DebugLog.log("sendNextParty: next=${g.nextCrawl()?.let { "${it.second.displayName()}->${it.first.name}" }}")
-        g.sendNextParty()
-        sendCounter += 1
-        logCrawl(g)
-        DebugLog.log("sendNextParty: after stage=${g.stage}")
+        DebugLog.log("passPriority: next=${g.nextCrawl()?.let { "${it.second.displayName()}->${it.first.name}" }}")
+        val before = g.lastOutcomes
+        g.human?.let { g.passPriority(it) }
+        if (g.lastOutcomes !== before) {
+            sendCounter += 1
+            logCrawl(g)
+        }
+        DebugLog.log("passPriority: after stage=${g.stage} priority=${g.priorityHolder()?.name}")
     }
 
     /** Log the just-resolved crawl hit-by-hit so logs capture per-hit damage. */

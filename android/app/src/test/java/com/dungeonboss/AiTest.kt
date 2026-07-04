@@ -315,6 +315,36 @@ class AiTest {
     }
 
     @Test
+    fun logicAgentPlaysOneAbilityPerPriorityThenPasses() {
+        val owner = Player("owner")
+        owner.dungeon = dungeon(0, listOf(5))
+        owner.abilityHand.add(bolster())
+        val party = Party(listOf(hero("h", 8))) // survives 5 -> a wound to prevent
+        val pol = policy(cards = mapOf("ability_extra_damage" to AbilityPolicy.CardPolicy(preventSelfWound = true)))
+        val agent = LogicAgent(rng = Random(1), abilityPolicy = pol)
+        val ctx = PreCrawlContext(owner, owner, party, owner.dungeon!!, owner.points, CrawlModifiers())
+
+        // First priority: play the one beneficial ability.
+        assertEquals(AbilityPlay("ability_extra_damage", 0), agent.preCrawlPlay(ctx))
+        // Once it is spent, the agent passes (nothing left that clears an objective).
+        owner.takeAbilityFromHand("ability_extra_damage")
+        assertNull(agent.preCrawlPlay(ctx))
+    }
+
+    @Test
+    fun logicAgentPassesWhenNoAbilityHelps() {
+        val owner = Player("owner")
+        owner.dungeon = dungeon(0, listOf(5))
+        owner.abilityHand.add(bolster())
+        val party = Party(listOf(hero("h", 3))) // dies already: no wound to prevent
+        val pol = policy(cards = mapOf("ability_extra_damage" to AbilityPolicy.CardPolicy(preventSelfWound = true)))
+        val agent = LogicAgent(rng = Random(1), abilityPolicy = pol)
+        val ctx = PreCrawlContext(owner, owner, party, owner.dungeon!!, owner.points, CrawlModifiers())
+
+        assertNull(agent.preCrawlPlay(ctx))
+    }
+
+    @Test
     fun abilityPolicyParsesFromYamlShape() {
         val raw = mapOf(
             "winning_opponent_points" to 7,

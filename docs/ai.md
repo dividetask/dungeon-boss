@@ -28,11 +28,11 @@ for:
 | `build_room`       | Build  | a room placement / upgrade move, or build nothing         |
 
 Beyond the `Decision` kinds, the agent also **plays ability cards** in the
-pre-crawl window (see [Ability cards](#ability-cards-pre-crawl) below). Because a
-crawl action is not a `Decision`, this uses a **separate agent entry point**,
-`Agent.preCrawlPlays`, that the `Game` calls for each automated player just
-before a crawl resolves. The one thing the agent still does only at random is the
-owner's discard-to-boost (`Game#agentPreCrawl`).
+pre-crawl priority loop (see [Ability cards](#ability-cards-pre-crawl) below).
+Because a crawl action is not a `Decision`, this uses a **separate agent entry
+point**, `Agent.preCrawlPlay`, that the `Game`'s priority loop calls each time
+the agent holds priority. The one thing the agent still does only at random is
+the owner's discard-to-boost (`Game#agentPreCrawl`).
 
 ## The heuristics file
 
@@ -92,14 +92,16 @@ placement scores at least as well as leaving the dungeon as-is.
 
 ## Ability cards (pre-crawl)
 
-Ability cards are **not** decided by a tie-break chain. Just before a party
-crawls, every automated player gets to play cards on that crawl — the owner to
-strengthen its dungeon, opponents to disrupt it — mirroring what the human can do
-in the same window. The `Game` calls `Agent.preCrawlPlays` for each automated
-player and applies the returned plays via `Game.playAbility`; **opponents act
-first (disruption), then the owner has the last word (buffs).** This is a
-simplified stand-in for the full turn-based Ability priority loop still marked
-TODO in [phases.md](phases.md#7b-ability).
+Ability cards are **not** decided by a tie-break chain. Each party's pre-crawl
+window is a turn-based priority loop (see [phases.md](phases.md#7b-ability)):
+whoever holds priority plays one ability or passes, a play lets everyone respond,
+and the crawl resolves once all pass in a row. Automated players take their turns
+through `Agent.preCrawlPlay`, which the `Game`'s loop calls each time the agent
+gets priority — it returns the **single** ability to play now, or null to pass.
+Because the agent is re-asked whenever priority returns to it, it plays its cards
+**one at a time**, always against the modifiers assembled so far (including the
+human's and other agents' plays), so it can genuinely respond — e.g. buff a room
+after an opponent sabotaged it, or sabotage after the owner buffed.
 
 Each card the actor holds is judged **on its own**: the agent forecasts the
 pending crawl WITH and WITHOUT the card — a side-effect-free `PartyCrawlResolver`

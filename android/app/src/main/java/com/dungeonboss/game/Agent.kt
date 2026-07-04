@@ -19,13 +19,14 @@ interface Agent {
     fun attach(game: Game) {}
 
     /**
-     * The pre-crawl ability step: the ability plays this agent wants to make on
-     * the crawl described by [context], applied in order. Crawl actions are not
-     * [Decision]s (there is no priority loop yet), so this is a separate entry
-     * point the [Game] calls for each automated player just before a crawl
-     * resolves. The default is to play nothing.
+     * The agent's move when it holds priority in the pre-crawl window: the single
+     * ability it wants to play now, or null to pass. Crawl actions are not
+     * [Decision]s, so the [Game]'s priority loop calls this each time the agent
+     * gets priority; returning a play resets the pass streak so others may
+     * respond, and the agent is asked again when priority returns to it. The
+     * default is to always pass.
      */
-    fun preCrawlPlays(context: PreCrawlContext): List<AbilityPlay> = emptyList()
+    fun preCrawlPlay(context: PreCrawlContext): AbilityPlay? = null
 }
 
 /** A single ability play an agent chooses in the pre-crawl window. */
