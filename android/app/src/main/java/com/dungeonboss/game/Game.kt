@@ -126,8 +126,18 @@ class Game(
     // shown beneath its target room). Cleared when a new window opens.
     private val crawlPlays = mutableListOf<AbilityPlayRecord>()
 
-    /** One ability card played on the current crawl: who played it, and its target encounter (null if none). */
-    data class AbilityPlayRecord(val player: Player, val card: AbilityCard, val targetIndex: Int?)
+    /**
+     * One action played on the current crawl, for display: who did it, a short
+     * label (the ability's name, or "Boost" — a boost's discarded card is not
+     * revealed), its target encounter (null if none), and whether it was a
+     * discard-to-boost rather than an ability card.
+     */
+    data class AbilityPlayRecord(
+        val player: Player,
+        val label: String,
+        val targetIndex: Int?,
+        val isBoost: Boolean = false
+    )
 
     /** A captured build placement so it can be fully reversed (see [undoPlacement]). */
     private class UndoablePlacement(
@@ -267,7 +277,7 @@ class Game(
         }
         spec.drawRooms?.let { drawRoomsFor(player, it) }
         abilityDeck.discard(card)
-        crawlPlays.add(AbilityPlayRecord(player, card, room))
+        crawlPlays.add(AbilityPlayRecord(player, card.name, room))
         consecutivePasses = 0        // a play gives everyone another chance to respond
         advancePriority()
     }
@@ -309,23 +319,38 @@ class Game(
     }
 
     /**
-     * The dungeon owner discards a room card to temporarily boost one of their
-     * boostable rooms (Power Word / Undead Hands). Each discarded card adds the
-     * room's discard amount to its damage for this crawl only — boosts stack.
+     * The dungeon owner discards a room card to boost one of their boostable rooms
+     * (Power Word / Undead Hands). Like an ability, a boost is a **priority
+     * action**: each discard stacks its `discard_*` amount onto the room (boosts
+     * accumulate), shows a card beneath the room, resets the pass streak so
+     * everyone may respond, then hands priority on and runs the automated players'
+     * responses. The owner must currently hold priority.
      */
     fun boostRoom(cardId: String, roomIndex: Int): Game {
         val owner = currentCrawl?.first ?: return this
-        val room = owner.dungeon!!.rooms[roomIndex]
-        if (!RoomEffect.boostable(room)) return this
-
-        val discard = owner.takeRoomFromHand(cardId)
-            ?: throw IllegalArgumentException("room not in hand: $cardId")
-        roomDeck.discard(discard)
-        // A boost spends a room card, so the build can no longer be undone.
-        undoablePlacement = null
-
-        crawlModifiers.addDamage(roomIndex, RoomEffect.boostAmount(room))
+        if (owner !== priorityHolder()) return this
+        if (!applyBoost(owner, cardId, roomIndex)) return this
+        consecutivePasses = 0        // a boost, like a play, reopens the response window
+        advancePriority()
+        driveCrawl()
         return this
+    }
+
+    /**
+     * Apply one discard-to-boost (shared by the human's [boostRoom] and the
+     * automated owner's [agentPreCrawl]): spend the card, stack its amount onto the
+     * room, and record it for display (as "Boost" — the discarded card is not
+     * shown). Returns true if it applied. Does no priority bookkeeping itself.
+     */
+    private fun applyBoost(owner: Player, cardId: String, roomIndex: Int): Boolean {
+        val room = owner.dungeon?.rooms?.getOrNull(roomIndex) ?: return false
+        if (!RoomEffect.boostable(room)) return false
+        val discard = owner.takeRoomFromHand(cardId) ?: return false
+        roomDeck.discard(discard)
+        undoablePlacement = null // a boost spends a room card; the build can no longer be undone
+        crawlModifiers.addDamage(roomIndex, RoomEffect.boostAmount(room)) // boosts stack
+        crawlPlays.add(AbilityPlayRecord(owner, "Boost", roomIndex, isBoost = true))
+        return true
     }
 
     /** The game is decided; no more turns. */
@@ -788,7 +813,11 @@ class Game(
         }
     }
 
-    /** An automated owner uses discard-to-boost on its own boostable rooms as the window opens. */
+    /**
+     * An automated owner uses discard-to-boost on its own boostable rooms as the
+     * window opens (before the priority loop runs, so the other players then get to
+     * respond to it). Each boost is recorded for display like a played card.
+     */
     private fun agentPreCrawl(owner: Player) {
         if (!automated(owner)) return
         val dungeon = owner.dungeon ?: return
@@ -796,7 +825,7 @@ class Game(
             if (!RoomEffect.boostable(room)) return@forEachIndexed
             if (crawlModifiers.boosted(i)) return@forEachIndexed
             val spare = owner.roomHand.firstOrNull()
-            if (spare != null && rng.nextDouble() < 0.5) boostRoom(spare.id, i)
+            if (spare != null && rng.nextDouble() < 0.5) applyBoost(owner, spare.id, i)
         }
     }
 

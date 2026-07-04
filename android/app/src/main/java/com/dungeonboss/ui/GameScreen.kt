@@ -1195,7 +1195,27 @@ internal fun DungeonBoard(
                     SurvivorMarkers(prediction, retreated = mods?.retreating() == true)
                     PlayedAbilities(plays, bossIndex, onShowPlays)
                 }
+                // The dungeon owner's current point total, beside the boss.
+                PointsBadge(player.points)
             }
+        }
+    }
+}
+
+/** A badge showing a dungeon owner's current point total, shown beside the boss. */
+@Composable
+private fun PointsBadge(points: Int) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Palette.HighlightFill)
+            .border(1.dp, Palette.Highlight, RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("🪙", fontSize = 16.sp)
+            Text("$points", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text("points", fontSize = 9.sp, color = Palette.SubText)
         }
     }
 }
@@ -1486,8 +1506,8 @@ private fun PlayedAbilitiesDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("✨", fontSize = 14.sp)
-                        Text(rec.card.name, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text(if (rec.isBoost) "🃏" else "✨", fontSize = 14.sp)
+                        Text(rec.label, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Text("— $who", fontSize = 12.sp, color = Palette.SubText)
                     }
                 }
@@ -1612,7 +1632,21 @@ private fun AdvanceBar(
     }
 
     Surface(shadowElevation = 8.dp, color = Color.White) {
-        Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), contentAlignment = Alignment.CenterEnd) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left: a one-line status of what just happened / what to do next
+            // (e.g. "Necromancer played Retreat", or the crawl that just resolved).
+            Text(
+                crawlStatus(game, reviewingResult),
+                modifier = Modifier.weight(1f),
+                fontSize = 13.sp,
+                color = Palette.SubText,
+                fontWeight = FontWeight.Medium
+            )
+            // Right: the action buttons.
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 // New game appears at the bottom-right only once the game is over.
                 if (game.over()) {
@@ -1669,6 +1703,40 @@ private fun AdvanceBar(
 private fun Hint(text: String) {
     Text(text, color = Palette.SubText, fontSize = 12.sp)
 }
+
+/**
+ * A one-line status for the bottom bar: what just happened (the latest ability
+ * played, or the crawl that just resolved) or what to do next. Empty for phases
+ * where the action button's own label already says it all.
+ */
+private fun crawlStatus(game: Game, reviewingResult: Boolean): String {
+    if (reviewingResult) {
+        val o = game.lastOutcomes.firstOrNull() ?: return ""
+        val where = playerLabel(game, o.player)
+        val died = o.result.deaths
+        val survived = o.result.survivors.size
+        return when {
+            o.retreated -> "${o.party.displayName()} retreated from $where"
+            survived == 0 && died > 0 -> "$died died in $where's dungeon"
+            died > 0 -> "$died died, $survived survived in $where's dungeon"
+            else -> "${o.party.displayName()} survived $where's dungeon"
+        }
+    }
+    if (game.crawling()) {
+        game.crawlPlays().lastOrNull()?.let { last ->
+            val who = playerLabel(game, last.player)
+            return if (last.isBoost) "$who boosted a room" else "$who played ${last.label}"
+        }
+        game.nextCrawl()?.let { (owner, party) ->
+            return "${party.displayName()} entering ${playerLabel(game, owner)}'s dungeon — play or pass"
+        }
+    }
+    return ""
+}
+
+/** Identify a player for status text: "You" for the human, else their boss's name. */
+private fun playerLabel(game: Game, player: Player): String =
+    if (game.automated(player)) (player.dungeon?.boss?.name ?: player.name) else "You"
 
 /** Hand the debug log file to another app (email, Drive, messaging…) to upload. */
 private fun shareLog(context: Context) {

@@ -147,8 +147,9 @@ and by whom. Effects last only that crawl.
   raise a boostable room's damage for that crawl only. Each discarded card adds
   the room's `discard_lead_damage` / `discard_all_damage` (e.g. **+2** to
   Power Word or Undead Hands); boosts **stack** and do not change the room's
-  level or bait. (The boost is the owner's own action, separate from the ability
-  priority loop.)
+  level or bait. A boost is a **priority action just like an ability**: it marks
+  the room with a card icon (shown as "Boost" — the discarded card is not
+  revealed) and reopens the response window so the other players may answer it.
 
 > **Computer opponents** take their priority turns automatically — see
 > [ai.md](ai.md#ability-cards-pre-crawl) for how the AI decides whether to play
