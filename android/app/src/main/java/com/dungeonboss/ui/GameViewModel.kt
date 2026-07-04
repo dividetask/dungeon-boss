@@ -149,9 +149,14 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun passPriority() = safe("passPriority") {
         val g = game ?: return@safe
-        DebugLog.log("passPriority: next=${g.nextCrawl()?.let { "${it.second.displayName()}->${it.first.name}" }}")
+        // Player-agnostic: pass for whoever currently holds priority, as long as
+        // it is a local (non-automated) player — the same path a human uses
+        // against other humans or against the AIs.
+        val actor = g.priorityHolder() ?: return@safe
+        if (g.automated(actor)) return@safe
+        DebugLog.log("passPriority: ${actor.name} next=${g.nextCrawl()?.let { "${it.second.displayName()}->${it.first.name}" }}")
         val before = g.lastOutcomes
-        g.human?.let { g.passPriority(it) }
+        g.passPriority(actor)
         if (g.lastOutcomes !== before) {
             sendCounter += 1
             logCrawl(g)
@@ -185,11 +190,15 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         else -> e.type ?: "encounter"
     }
 
-    /** Play an ability card from the human's hand on the current crawl (or quiet round). */
+    /** Play an ability card from the local player's hand on the current crawl (or quiet round). */
     fun playAbility(cardId: String, target: Any? = null) = safe("playAbility($cardId,$target)") {
         val g = game ?: return@safe
-        human?.let { g.playAbility(it, cardId, target) }
-        DebugLog.log("playAbility: $cardId target=$target stage=${g.stage}")
+        // During a crawl the actor is the current (local) priority holder; on a
+        // quiet round there is no priority loop, so it is simply the local human.
+        val actor = g.priorityHolder() ?: human ?: return@safe
+        if (g.automated(actor)) return@safe
+        g.playAbility(actor, cardId, target)
+        DebugLog.log("playAbility: ${actor.name} $cardId target=$target stage=${g.stage} priority=${g.priorityHolder()?.name}")
     }
 
     /** Discard a room card to boost the human's boostable room before its crawl. */

@@ -97,6 +97,8 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
 
     // A card whose full details are being shown in a popup (ℹ button), or null.
     var detailCard by remember { mutableStateOf<Any?>(null) }
+    // The ability plays on one room, shown in a popup when its icon is tapped.
+    var playsPopup by remember { mutableStateOf<List<Game.AbilityPlayRecord>?>(null) }
     // Whether the full all-players standings dialog is open.
     var showStandings by remember { mutableStateOf(false) }
     // When non-null, the player whose dungeon the user is peeking at (picked from
@@ -274,6 +276,7 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         },
                         onPlayBlueprints = { card -> vm.playAbility(card.id) },
                         onShowDetail = { card -> detailCard = card },
+                        onShowPlays = { plays -> playsPopup = plays },
                         activeIndex = activeIndex.value,
                         heroHp = heroHp,
                         deadSet = deadSet,
@@ -322,6 +325,10 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
 
         detailCard?.let { card ->
             CardDetailDialog(card) { detailCard = null }
+        }
+        val popup = playsPopup
+        if (popup != null && game != null) {
+            PlayedAbilitiesDialog(game, popup) { playsPopup = null }
         }
         if (showStandings && game != null) {
             StandingsDialog(
@@ -435,6 +442,7 @@ internal fun GameBody(
     onBoostWithCard: (String) -> Unit,
     onPlayBlueprints: (AbilityCard) -> Unit,
     onShowDetail: (Any) -> Unit,
+    onShowPlays: (List<Game.AbilityPlayRecord>) -> Unit = {},
     activeIndex: Int?,
     heroHp: Map<Int, Int>,
     deadSet: List<Int>,
@@ -631,6 +639,7 @@ internal fun GameBody(
             activeIndex = if (isCrawledHere) activeIndex else null,
             incoming = incoming,
             prediction = prediction,
+            onShowPlays = onShowPlays,
             baitHighlight = baitHighlight,
             baitGlow = baitGlow
         )
@@ -1093,6 +1102,8 @@ internal fun DungeonBoard(
     activeIndex: Int?,
     incoming: Party? = null,
     prediction: PartyCrawlResolver.Result? = null,
+    // Tap the played-ability icon under a room to list what was played there.
+    onShowPlays: (List<Game.AbilityPlayRecord>) -> Unit = {},
     // Tutorial-only bait spotlight, forwarded to the room/boss cards.
     baitHighlight: Set<Bait> = emptySet(),
     baitGlow: Float = 1f
@@ -1167,7 +1178,7 @@ internal fun DungeonBoard(
                             }
                             DeathMarkers(prediction, ei)
                             FledMarkers(prediction, mods?.retreatIndex(), ei)
-                            PlayedAbilities(plays, ei, game)
+                            PlayedAbilities(plays, ei, onShowPlays)
                         }
                     }
                 }
@@ -1182,7 +1193,7 @@ internal fun DungeonBoard(
                         baitHighlight = baitHighlight, baitGlow = baitGlow)
                     DeathMarkers(prediction, bossIndex)
                     SurvivorMarkers(prediction, retreated = mods?.retreating() == true)
-                    PlayedAbilities(plays, bossIndex, game)
+                    PlayedAbilities(plays, bossIndex, onShowPlays)
                 }
             }
         }
@@ -1429,29 +1440,64 @@ private fun FledMarkers(prediction: PartyCrawlResolver.Result?, retreatIndex: In
 }
 
 /**
- * The ability cards played on this encounter in the current pre-crawl window,
- * stacked beneath the room so it is clear which player used what — and, since the
- * window stays open, that others may respond in kind.
+ * A single card icon beneath a room that has had ability cards played on it this
+ * window, with a ×N badge for the total. Tapping it opens [PlayedAbilitiesDialog]
+ * listing every card played there and by whom — so it is clear what was used and
+ * that others may respond in kind.
  */
 @Composable
-private fun PlayedAbilities(plays: List<Game.AbilityPlayRecord>, encounterIndex: Int, game: Game) {
+private fun PlayedAbilities(
+    plays: List<Game.AbilityPlayRecord>,
+    encounterIndex: Int,
+    onShowPlays: (List<Game.AbilityPlayRecord>) -> Unit
+) {
     val here = plays.filter { it.targetIndex == encounterIndex }
     if (here.isEmpty()) return
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(Palette.AbilityBg)
+            .border(1.dp, Palette.AbilityBorder, RoundedCornerShape(6.dp))
+            .clickable { onShowPlays(here) }
+            .padding(horizontal = 5.dp, vertical = 2.dp)
     ) {
-        here.forEach { rec ->
-            val who = if (game.automated(rec.player)) "P${game.players.indexOf(rec.player) + 1}" else "You"
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Palette.AbilityBg)
-                    .border(1.dp, Palette.AbilityBorder, RoundedCornerShape(6.dp))
-                    .padding(horizontal = 4.dp, vertical = 1.dp)
+        Text("🃏" + if (here.size > 1) " ×${here.size}" else "",
+            fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF6B5310))
+    }
+}
+
+/** Lists every ability card played on one room this window, and who played it. */
+@Composable
+private fun PlayedAbilitiesDialog(
+    game: Game,
+    plays: List<Game.AbilityPlayRecord>,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(12.dp), color = Color.White) {
+            Column(
+                Modifier.widthIn(min = 260.dp, max = 340.dp).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("✨ $who · ${rec.card.name}", fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold, color = Color(0xFF6B5310))
+                Text("Cards played on this room", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                plays.forEach { rec ->
+                    val who = if (game.automated(rec.player)) rec.player.name else "You"
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("✨", fontSize = 14.sp)
+                        Text(rec.card.name, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("— $who", fontSize = 12.sp, color = Palette.SubText)
+                    }
+                }
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End),
+                    colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
+                ) {
+                    Text("Close", color = Color.White)
+                }
             }
         }
     }

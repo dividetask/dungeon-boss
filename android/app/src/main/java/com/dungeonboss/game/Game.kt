@@ -501,11 +501,27 @@ class Game(
      * discard-to-boost first (a room-card boost, not an ability play).
      */
     private fun openPriorityWindow(owner: Player) {
-        priorityOrder = livingPlayers()
+        priorityOrder = priorityOrderForRound()
         priorityIndex = 0
         consecutivePasses = 0
         crawlPlays.clear()
         agentPreCrawl(owner)
+    }
+
+    /**
+     * The player order for this turn's priority loop, rotated so a **different
+     * player leads each turn** (turn 1 → player 1, turn 2 → player 2, wrapping),
+     * with eliminated players skipped. Player-agnostic: humans and agents take
+     * their turns through the same order, so the loop plays identically whether an
+     * opponent is a computer or another person.
+     */
+    private fun priorityOrderForRound(): List<Player> {
+        val n = players.size
+        if (n == 0) return emptyList()
+        val start = (round - 1).coerceAtLeast(0) % n // round is 1-based during play
+        return (0 until n)
+            .map { players[(start + it) % n] }
+            .filterNot { Scoreboard.eliminated(it) }
     }
 
     /**

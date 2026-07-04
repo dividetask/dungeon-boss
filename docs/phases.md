@@ -127,9 +127,14 @@ consolidated in the Recharge phase.
 Before a party crawls, its pre-crawl window runs as a turn-based **priority
 loop**. The player with priority may **play one ability or pass**; **whenever an
 ability is played every player is given another opportunity** to respond, and the
-crawl only resolves once **all players pass consecutively**. Priority runs in
-player order, and each ability played is shown **beneath its target room** so
-every player can see what was used and answer it. Effects last only that crawl.
+crawl only resolves once **all players pass consecutively**. Priority runs in a
+player order that **rotates each turn** (turn 1 leads with player 1, turn 2 with
+player 2, …), so no one player always acts first. Every player takes their turn
+the same way — this is deliberately **player-agnostic**, so the experience is
+identical whether opponents are people or computers. Each ability played is
+marked by a **card icon beneath its target room** (with a **×N** count when more
+than one has landed there); tapping the icon lists every card played on that room
+and by whom. Effects last only that crawl.
 
 - **Play ability cards** — any player, one-shot (discarded after use): Bolster
   (+damage to a room), Counter (a room becomes unreducible), Sabotage (a room
