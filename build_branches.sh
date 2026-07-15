@@ -58,6 +58,9 @@ AUTOCLONE="${AUTOCLONE:-1}"       # clone a missing app dir from its <git-url>
 
 [ "$#" -gt 0 ] && { echo "usage: build_branches.sh  (no arguments)" >&2; exit 2; }
 
+# Timestamp helper for debug output (local time, e.g. 2026-07-15 14:03:11).
+ts() { date '+%Y-%m-%d %H:%M:%S'; }
+
 # Make sure Gradle can find the Android SDK. It reads ANDROID_HOME /
 # ANDROID_SDK_ROOT from the environment, or sdk.dir from <projdir>/local.properties.
 # When this script runs detached (cron / the forever-loop) those env vars are
@@ -90,17 +93,26 @@ ensure_sdk() {
 # Next version file from existing vMAJOR.MINOR.apk files in $VERSIONS. Finds the
 # highest existing version (compared by major, then minor) and bumps the minor
 # while keeping that major (v0.016.apk -> v0.017.apk; v1.001.apk -> v1.002.apk).
+#
+# The minor field's zero-padding is DETECTED from the existing files rather than
+# hardcoded, because different apps use different widths (dungeon-boss v0.016 is
+# 3 digits, language-games v0.0001 is 4). We use the widest minor field seen so a
+# stray narrower file can't shrink the convention; %0*d still grows past that
+# width once the number itself is longer (…v0.999 -> v0.1000). Default width 3
+# when the dir has no version files yet. 10# forces base-10 so a zero-padded
+# minor like 0008 is never misread as octal.
 next_version() {
-  local maxmajor=0 maxminor=0 major minor f; shopt -s nullglob
+  local maxmajor=0 maxminor=0 major minorstr minor f width=3; shopt -s nullglob
   for f in "$VERSIONS"/v*.apk; do
-    [[ "$(basename "$f")" =~ ^v0*([0-9]+)\.0*([0-9]+)\.apk$ ]] || continue
-    major="${BASH_REMATCH[1]}"; minor="${BASH_REMATCH[2]}"
+    [[ "$(basename "$f")" =~ ^v0*([0-9]+)\.([0-9]+)\.apk$ ]] || continue
+    major="${BASH_REMATCH[1]}"; minorstr="${BASH_REMATCH[2]}"; minor=$((10#$minorstr))
+    (( ${#minorstr} > width )) && width=${#minorstr}
     if (( major > maxmajor || (major == maxmajor && minor > maxminor) )); then
       maxmajor=$major; maxminor=$minor
     fi
   done
   shopt -u nullglob
-  printf 'v%d.%03d.apk' "$maxmajor" $((maxminor + 1))
+  printf 'v%d.%0*d.apk' "$maxmajor" "$width" $((maxminor + 1))
 }
 
 # Build every changed branch of one app.
@@ -144,7 +156,7 @@ process_app() {
     last="$(grep "^$branch " "$STATE" 2>/dev/null | awk '{print $2}' | tail -1)"
     [ "$sha" = "$last" ] && { echo "  skip $branch (no changes)"; continue; }
 
-    echo "  === $app / $branch (${sha:0:7}) ==="
+    echo "  [$(ts)] === $app / $branch (${sha:0:7}) ==="
     git checkout -B "$branch" "$REMOTE/$branch" >/dev/null 2>&1 || { echo "    checkout failed"; continue; }
     mkdir -p "$LOGS" "$VERSIONS"
     # One log per branch is unnecessary: the file is committed to the branch it
@@ -156,7 +168,7 @@ process_app() {
       echo "    building: (cd $proj && ./gradlew $TASK)"
       ( cd "$proj" && ./gradlew "$TASK" ) > "$log" 2>&1
       rc=$?
-      echo "    gradle exit $rc"
+      echo "    [$(ts)] gradle exit $rc"
       if [ "$rc" -eq 0 ] && [ -f "$APK" ]; then
         cp "$APK" "$VERSIONS/latest.apk"
       elif [ "$rc" -eq 0 ]; then
@@ -216,13 +228,14 @@ ensure_checkout() {
 
 # --- Main loop: one full pass over all apps, then wait, forever. -------------
 while true; do
+  echo "===== pass started $(ts) ====="
   for entry in "${APPS[@]}"; do
     IFS='|' read -r dir subdir url <<< "$entry"
     REPO="$BASE/$dir"
-    echo "### app: $dir  (gradle dir: $subdir)"
+    echo "[$(ts)] ### app: $dir  (gradle dir: $subdir)"
     ensure_checkout "$REPO" "$url" || continue
     process_app "$dir" "$REPO" "$subdir"
   done
-  echo "pass complete; waiting $((WAIT / 60)) minutes before next run..."
+  echo "pass complete $(ts); waiting $((WAIT / 60)) minutes before next run..."
   sleep "$WAIT"
 done
