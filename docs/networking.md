@@ -14,8 +14,9 @@
 - **First target client:** two (up to four) **Android** phones. The design is
   client-agnostic so the web app can join the same matches later.
 - **Not in scope here:** accounts, friend lists, ranked/skill matchmaking,
-  spectators, chat. Matchmaking here means the minimum needed to get 2–4 chosen
-  people into the same match: **create a match, share a code, join by code**.
+  spectators, chat. Matchmaking here is **automatic**: a player asks for a 2–4
+  player table and the **server pairs whoever is waiting** into a match. The app
+  finds opponents — no codes, no invites, no out-of-band sharing.
 
 ## The core decision: non-authoritative lockstep
 
@@ -94,73 +95,90 @@ New classes for online play. They live at the edges; the engine (`Game`,
 
 | Class | Responsibility |
 |-------|----------------|
-| `MatchConfig` | The immutable agreed-upon start parameters: `matchId`, ordered player list (id + display name), and the shared **`seed`**. Every device builds its `Game` from exactly this. Serializable. |
-| `MoveMessage` | One player's answer to one `Decision`: `matchId`, `seq` (monotonic), `player`, `decisionId`, `choiceId`, optional `target`, optional state `hash`. The **only** game message type. Serializable. |
-| `NetworkTransport` | Wraps the relay backend. Sends a `MoveMessage`; delivers incoming messages **in `seq` order, exactly once, reliably**; reports connect/disconnect. Knows nothing about game rules. |
-| `Lobby` / `Matchmaker` | Pre-game: **create** a match (mint `matchId` + short join code, pick the seed), **join** by code, list seated players, and **start** (freeze `MatchConfig` and hand off to the transport). The only "matchmaking" surface. |
-| `RemoteAgent` | An `Agent` for a **remote** seat: `choose(decision)` blocks until the matching `MoveMessage` for that seat arrives from the transport, then returns its `(choiceId, target)`. The mirror image of a local human. |
-| `LocalRelay` *(the local player)* | Not a new class so much as a rule: when the **local** human answers a `Decision`, the client **broadcasts** that answer as a `MoveMessage` before/as it applies it, so remote devices' `RemoteAgent`s can resolve the same decision. |
-| `MatchClient` | Orchestrates a live match: owns the local `Game`, the `NetworkTransport`, and the per-seat `Agent` map (local human for our seat, `RemoteAgent` for the others). Feeds ordered `MoveMessage`s into the game loop and drives `DesyncGuard`. Online counterpart to the webapp's request handlers / Android's `GameViewModel`. |
+**Client-side** (Android; the web app later):
+
+| Class | Responsibility |
+|-------|----------------|
+| `MatchConfig` | The immutable start parameters the server hands out in `matched`: `matchId`, ordered player list (id + display name), the shared **`seed`**, and `you` (the local seat). Every device builds its `Game` from exactly this. |
+| `MoveMessage` | One player's answer to one `Decision`: `seq` (server-stamped), `player` (seat), `decisionId`, `choiceId`, optional `target`. The **only** in-game message type. |
+| `NetworkTransport` | The WebSocket client to the matchmaking server. Sends `queue` / `move` / `reconnect`; delivers incoming `matched` / ordered `move` / `log` messages; reports connect/disconnect. Knows nothing about game rules. |
+| `Matchmaking` (client) | The online entry point: connect, send `queue{players}`, wait for `matched`. **Automatic** — no codes; the server finds opponents. Surfaces "searching… / matched" to the UI. |
+| `RemoteAgent` | An `Agent` for a **remote** seat: `choose(decision)` blocks until the matching `move` for that seat arrives from the transport, then returns its `(choiceId, target)`. The mirror image of a local human. |
+| `LocalRelay` *(the local player)* | Not a new class so much as a rule: when the **local** human answers a `Decision`, the client **sends** that answer as a `move`; it is applied only when it comes back from the server in `seq` order (the server is the sequencer), keeping every device's order identical. |
+| `MatchClient` | Orchestrates a live match: owns the local `Game`, the `NetworkTransport`, and the per-seat `Agent` map (local human for `config.you`, `RemoteAgent` for the others). Feeds ordered `move`s into the game loop and drives `DesyncGuard`. Online counterpart to Android's `GameViewModel`. |
 
 The **`Agent` map** `Game` already takes becomes: our own seat → the local human
 input path; every other seat → a `RemoteAgent`. No `Game` change beyond the seed.
 
+**Server-side** (`server/`, a self-hosted Node service — **built**; see
+[../server/README.md](../server/README.md)). It runs no game rules — it groups
+players and orders moves:
+
+| Class | Responsibility |
+|-------|----------------|
+| `MatchmakingQueue` | The waiting pool. One FIFO queue per desired table size (2–4); forms a table as soon as enough compatible players wait. This is what makes matchmaking automatic. |
+| `Match` | A formed table: seats, the shared `seed`, and the ordered move log. **Sequences** each incoming move (`seq++`) and broadcasts it to every seat; retains the log for reconnect-by-replay. |
+| `Matchmaker` | Coordinator: routes each client message to the queue or its match; mints the `matchId` + **`seed`** at match formation. |
+| `Session` | One connected client (its socket + whether it is queued or seated). |
+
 ## Message schema
 
-Two message families: **lobby** (pre-game, small, human-paced) and **move**
-(in-game, the lockstep inputs). JSON on the wire.
+JSON text frames over one WebSocket per player. The full contract (every message
+type, both directions) lives in [../server/README.md](../server/README.md); the
+two the game turns on are:
 
 ```
-MatchConfig {
-  matchId:  string          # server-minted id for the match
-  joinCode: string          # short human-shareable code (e.g. "K7Q2")
-  seed:     integer         # shared PRNG seed; seeds every shuffle/random
-  players:  [ { seat: 0..3, id: string, name: string } ]   # fixed order
-}
+matched (server → client, when a table forms):
+  config {
+    matchId: string
+    seed:    integer     # server-minted shared PRNG seed; seeds every shuffle
+    players: [ { seat: 0..3, id: string, name: string } ]   # fixed seat order
+    you:     integer     # which seat is local (a human); others are RemoteAgents
+  }
 
-MoveMessage {
-  matchId:    string
-  seq:        integer       # global monotonic order of applied decisions
-  player:     integer       # seat 0..3 that made the choice
-  decisionId: string        # which Decision this answers (must match the pending one)
-  choiceId:   string        # the chosen option's id
-  target:     string|null   # optional target (e.g. which room/slot)
-  hash:       string|null   # optional DesyncGuard checkpoint of state after apply
-}
+move (client → server to submit; server → clients to apply, stamped):
+  seq:        integer    # server-assigned global order (absent on submit)
+  player:     integer    # seat 0..3 that made the choice
+  decisionId: string     # which Decision this answers (must match the pending one)
+  choiceId:   string     # the chosen option's id
+  target:     string|null# optional target (e.g. which room/slot)
 ```
 
-`decisionId` is included so a device can assert the incoming move answers the
-`Decision` its own `Game` is currently waiting on — a mismatch means a desync or a
-bug, caught immediately.
+`decisionId` lets a device assert the incoming move answers the `Decision` its own
+`Game` is currently waiting on — a mismatch means a desync or a bug, caught
+immediately. (`DesyncGuard` state hashes travel out-of-band, e.g. a periodic
+checkpoint message, so they never gate the move stream.)
 
 ## Match lifecycle
 
 ```
-CREATE   Host: Lobby.create() → matchId + joinCode + seed → MatchConfig (host seated 0)
-JOIN     Others: Lobby.join(joinCode) → seated in arrival order (seats 1..3)
-LOBBY    Host sees seated players; 2–4 total; host presses Start
-START    Lobby freezes MatchConfig; broadcast to all; each device:
-           game = Game.new(players, seed = config.seed, agents = agentMap(config))
+CONNECT  each device opens a WebSocket → server sends hello{ playerId }
+QUEUE    device sends queue{ name, players:2..4 } → server sends queued{ waiting }
+MATCH    server pairs the waiting players automatically (no codes) and sends
+           matched{ config } to every seat
+START    each device: game = Game.seeded(config.seed, players); local seat = config.you;
+           agents = { config.you → local human, others → RemoteAgent }
 PLAY     loop:
-           local Decision  → human answers → broadcast MoveMessage(seq++) → apply
-           remote Decision → RemoteAgent blocks on transport → MoveMessage → apply
+           local Decision  → human answers → send move → (server stamps seq) →
+             move echoes back → apply in seq order
+           remote Decision → RemoteAgent blocks until that seat's move arrives → apply
            automatic phases run locally on every device (no messages)
            DesyncGuard checkpoints each round
-END       Scoreboard game-over on every device identically; show result
+END      Scoreboard game-over on every device identically; show result
 ```
 
-Seat 0 (the creator/host) owns only **pre-game** choices that must be single-sourced
-— the seed and the join code. Once the match starts the host has **no special
-authority**; it is an ordinary lockstep peer.
+The server is the neutral party only at the edges: it **forms the table** and
+**mints the seed**, and in-game it **orders the moves**. It has no authority over
+the rules — every device computes the game itself.
 
 ## Reconnection: replay from the move log
 
-Lockstep makes reconnection nearly free. The relay retains the ordered
-`MoveMessage` log for the match (this is what a relay is good at). A device that
-drops and returns:
+Lockstep makes reconnection nearly free. The server retains the ordered move log
+for the match (`Match` keeps it in memory). A device that drops and returns sends
+`reconnect{ matchId, playerId }` and:
 
-1. Rebuilds a fresh `Game` from the same `MatchConfig` (same seed → same start).
-2. **Replays every `MoveMessage`** from `seq 0` up to the latest in order.
+1. Rebuilds a fresh `Game` from the same `config` (same seed → same start).
+2. **Replays every move** in the returned `log` from `seq 0` up to the latest.
 3. Arrives at the exact current state, then resumes live.
 
 No snapshotting of game state is required — the seed plus the input log **is** the
@@ -169,27 +187,28 @@ gone — **pause and wait** for a reconnect window, vs. **timeout → the match 
 that player forfeits**. Recommended default: pause with a timeout, then end the
 match **(interpretation)**.
 
-## The relay backend
+## The matchmaking server
 
-The relay is a **dumb pipe + lobby store** — it never runs game logic, never
-validates a move against the rules, and holds no `Game`. It must provide, per
-match: **ordered, reliable, exactly-once** message fan-out, presence for the
-lobby, and retention of the move log for replay. Given Android-first and no
-game logic to host, a **managed real-time backend** is the fastest path and needs
-no server of our own to operate.
+**Chosen: a self-hosted WebSocket server** (`server/`, built — see
+[../server/README.md](../server/README.md)). A managed database (Firebase et al.)
+was considered but ruled out: **automatic matchmaking** needs a waiting-pool that
+pairs players and forms tables, which is server logic, not just a shared document.
+Rather than push that into serverless functions, a small dedicated service is
+clearer and keeps the whole online path in one testable place. It still runs **no
+game rules** — it groups players and orders moves, nothing more.
 
-| Option | Notes |
-|--------|-------|
-| **Firebase Realtime DB / Firestore** *(recommended)* | Native Android SDK; "append to an ordered move list + presence" is its core competency; no server code to write or host. Start here. |
-| **Ably / PubNub** | Pure pub/sub with guaranteed ordering if a message bus is preferred over a database. |
-| **Self-hosted WebSocket relay** | Only if we want to own the infrastructure; more work, no rules benefit. |
+What it provides, per match: automatic **pairing** of waiting players into 2–4
+player tables (no codes), **ordered** move fan-out (the server stamps `seq`),
+minting of the shared **seed**, and retention of the **move log** for reconnect.
 
-Avoid **Google Play Games** real-time multiplayer: Google **deprecated** that API,
-and it would lock the design to Android just when we want the web client to join
-later.
+It is a single stateless Node process (matches live in memory); run one instance
+to start. Deploy behind TLS so phones connect over `wss://`. Google Play Games
+real-time multiplayer was **not** used: Google deprecated that API and it would
+lock the design to Android just when we want the web client to join later.
 
-`NetworkTransport` is the seam that hides this choice — swapping Firebase for
-another backend must not touch `Game`, `RemoteAgent`, or `MatchClient`.
+`NetworkTransport` is the seam that hides the backend — the client speaks the
+WebSocket protocol and never assumes a particular host, so the server can be moved
+or replaced without touching `Game`, `RemoteAgent`, or `MatchClient`.
 
 ## Trade-off and fallback
 
@@ -212,11 +231,21 @@ host-authoritative is the documented fallback.
    `NetworkDeterminismTest` — same-seed shuffle/deal equality and a full seeded
    playthrough that stays byte-identical (via `exportJson`) to game over.
 2. **`RemoteAgent`** + the local-broadcast rule against an in-memory fake
-   transport (two `Game`s in one process kept in lockstep).
-3. **`NetworkTransport` (Firebase)** + `MoveMessage` serialization.
-4. **`Lobby` / `Matchmaker`** (create / join-by-code / start) + `MatchConfig`.
-5. **`MatchClient`** wiring into the Android `GameViewModel`; **`DesyncGuard`**.
-6. **Reconnect-by-replay** and the disconnect policy.
+   transport (two `Game`s in one process kept in lockstep). *(next)*
+3. **Matchmaking server** — *(built)*: automatic pairing, move sequencing, move
+   log, reconnect; self-hosted Node service in `server/` with passing tests for
+   auto-match, sequenced relay, and reconnect-by-replay.
+4. **`NetworkTransport`** (Android WebSocket client) + `MoveMessage` /
+   `MatchConfig` (de)serialization against the server protocol.
+5. **`Matchmaking` + the "Play online" button** in the Android UI (a separate
+   entry point from "New game" / play-computer): connect, `queue`, show
+   "searching…", then start the match on `matched`.
+6. **`MatchClient`** wiring into the Android `GameViewModel`; **`DesyncGuard`**;
+   reconnect-by-replay and the disconnect policy.
+
+Server-side (step 3) is done and tested. The remaining work is all **client-side**
+(steps 2, 4, 5, 6): teach the Android app to speak the protocol, add the button,
+and slot `RemoteAgent` into the existing `Agent` seam.
 
 ## Open questions
 
@@ -226,5 +255,10 @@ host-authoritative is the documented fallback.
   ([phases.md](phases.md), [architecture.md](architecture.md)). It is the one
   phase with genuine turn-by-turn cross-player interaction and will exercise the
   networking hardest; it should be built alongside (or before) online play.
-- **Match size changes mid-lobby** — whether late joins are allowed before Start
-  (proposed: no; the seated list freezes at Start).
+- **Thin queue / no opponents** — a table forms only when exactly `players`
+  people want the same size. If few players are online, someone waiting for a
+  4-player table may wait forever. Options for later: a **backfill timeout**
+  (start a smaller table, or offer to add AI after N seconds), a single "any
+  size" queue, or a shown "N searching" count. Deliberately omitted for now —
+  the current server pairs strictly by requested size.
+- **Skill / region matchmaking** — out of scope; the queue is FIFO by size only.
