@@ -66,7 +66,8 @@ class CardLibrary(
             bait = baitOf(c["bait"]),
             effect = effectOf(c["effect"]),
             tags = tagsOf(c["tags"]),
-            abilityText = c["ability_text"]?.toString() ?: ""
+            abilityText = c["ability_text"]?.toString() ?: "",
+            shortName = c["short_name"]?.toString() ?: c.req("name")
         )
 
         private fun buildRoom(c: Map<String, Any?>, advanced: Boolean) = Room(

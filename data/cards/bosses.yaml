@@ -46,6 +46,7 @@ bosses:
 
   - id: boss_goblin_chieftain
     name: Goblin Chieftain
+    short_name: Chieftain
     lead_damage: 4
     bait:
       glory: 1

@@ -243,6 +243,9 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             DebugLog.error("action $label failed", t)
             lastError = "$label failed — ${t.javaClass.simpleName}: ${t.message}"
         }
+        // Surface what the automated players did during this action (priority-loop
+        // plays / boosts / passes), which the Game records but does not log itself.
+        game?.drainCrawlLog()?.forEach { DebugLog.log("  ai: $it") }
         autosave()
         bump()
     }

@@ -19,6 +19,12 @@ import kotlin.math.floor
 interface Card {
     val id: String
     val name: String
+
+    /**
+     * A short label shown on the compact card (when it isn't expanded to its full
+     * width, e.g. during boss selection). Defaults to the full [name].
+     */
+    val shortName: String get() = name
 }
 
 /**
@@ -116,7 +122,8 @@ class Boss(
     override val bait: BaitIcons,
     override val effect: Map<String, Any?> = emptyMap(),
     override val tags: Set<String> = emptySet(),
-    val abilityText: String = ""
+    val abilityText: String = "",
+    override val shortName: String = name
 ) : Card, Encounter {
     /** The boss deals only lead damage (no level scaling). */
     override val leadBase: Int = damage

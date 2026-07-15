@@ -60,7 +60,8 @@ tags: [goblin, monster]
 | Field         | Type            | v1 | Notes                                  |
 |---------------|-----------------|----|----------------------------------------|
 | `id`          | string          | ✅ | Unique identifier                      |
-| `name`        | string          | ✅ | Display name                           |
+| `name`        | string          | ✅ | Display name (shown in full while selecting a boss) |
+| `short_name`  | string          | ❌ | Compact label for the board card (when not expanded); defaults to `name`. E.g. Goblin Chieftain → "Chieftain" |
 | `lead_damage` | integer ≥ 0     | ✅ | Damage dealt to the lead hero as the final encounter |
 | `bait`        | map<bait,int>   | ✅ | Bait icons by type                     |
 | `effect`      | map             | ✅ | **Declarative** effect spec (see below); omit for none |

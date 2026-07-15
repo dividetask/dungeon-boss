@@ -56,11 +56,12 @@ fun CardFrame(
     modifier: Modifier = Modifier,
     highlighted: Boolean = false,
     height: Dp = CARD_HEIGHT,
+    width: Dp = CARD_WIDTH,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(
         modifier
-            .width(CARD_WIDTH)
+            .width(width)
             .height(height)
             .clip(CARD_SHAPE)
             .background(bg)
@@ -252,12 +253,19 @@ fun BossCardView(
     parts: List<Int>? = null,
     ownerLabel: String? = null,
     onInfo: (() -> Unit)? = null,
+    // When expanded (boss selection) the card is double width and shows the full
+    // name; otherwise it uses the compact width and the boss's short name.
+    expanded: Boolean = false,
     baitHighlight: Set<Bait> = emptySet(),
     baitGlow: Float = 1f
 ) {
     WithInfo(onInfo) {
-        CardFrame(Palette.BossBg, Palette.BossBorder, modifier, highlighted) {
-            CardHeader(CardArt.bossArt(boss.id), boss.name + (ownerLabel?.let { " ($it)" } ?: ""))
+        CardFrame(
+            Palette.BossBg, Palette.BossBorder, modifier, highlighted,
+            width = if (expanded) CARD_WIDTH * 2 else CARD_WIDTH
+        ) {
+            val title = if (expanded) boss.name else boss.shortName
+            CardHeader(CardArt.bossArt(boss.id), title + (ownerLabel?.let { " ($it)" } ?: ""))
             StatRow(
                 { Damage(parts?.sum() ?: boss.displayDamage) },
                 { BaitWithMarkers(boss.bait, hasEffect = boss.hasSpecial, upgraded = false, baitHighlight = baitHighlight, baitGlow = baitGlow) }

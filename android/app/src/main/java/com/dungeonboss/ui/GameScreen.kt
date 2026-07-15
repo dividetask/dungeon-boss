@@ -1129,7 +1129,7 @@ internal fun DungeonBoard(
                     // Tap a boss card to choose it (instruction shown on the button).
                     decision!!.options.filterIsInstance<Boss>().forEach { boss ->
                         BossCardView(boss, Modifier.clickable { onChooseBoss(boss.id) },
-                            onInfo = { onShowDetail(boss) })
+                            onInfo = { onShowDetail(boss) }, expanded = true)
                     }
                 } else {
                     Text("No boss chosen yet.", color = Palette.SubText, fontSize = 12.sp)
@@ -1641,13 +1641,16 @@ private fun AdvanceBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Left: a one-line status of what just happened / what to do next
-            // (e.g. "Necromancer played Retreat", or the crawl that just resolved).
+            // (e.g. "⚠ Necromancer played Retreat", or the crawl that just
+            // resolved). An opponent's response is flagged with ⚠ and coloured.
+            val status = crawlStatus(game, reviewingResult, awaitingCrawlStart)
+            val alert = status.startsWith("⚠")
             Text(
-                crawlStatus(game, reviewingResult, awaitingCrawlStart),
+                status,
                 modifier = Modifier.weight(1f),
                 fontSize = 13.sp,
-                color = Palette.SubText,
-                fontWeight = FontWeight.Medium
+                color = if (alert) Palette.Damage else Palette.SubText,
+                fontWeight = if (alert) FontWeight.Bold else FontWeight.Medium
             )
             // Right: the action buttons.
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1730,7 +1733,16 @@ private fun crawlStatus(game: Game, reviewingResult: Boolean, awaitingCrawlStart
         }
     }
     if (game.crawling()) {
-        game.crawlPlays().lastOrNull()?.let { last ->
+        val plays = game.crawlPlays()
+        // Prefer the most recent OPPONENT action so the player's own later plays
+        // don't bury it (e.g. an opponent's Retreat must stay visible); it is
+        // flagged with ⚠ and a "respond or pass" nudge.
+        plays.lastOrNull { game.automated(it.player) }?.let { opp ->
+            val who = playerLabel(game, opp.player)
+            val what = if (opp.isBoost) "boosted a room" else "played ${opp.label}"
+            return "⚠ $who $what — respond or pass"
+        }
+        plays.lastOrNull()?.let { last ->
             val who = playerLabel(game, last.player)
             return if (last.isBoost) "$who boosted a room" else "$who played ${last.label}"
         }

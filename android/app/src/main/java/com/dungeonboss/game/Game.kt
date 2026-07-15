@@ -125,6 +125,10 @@ class Game(
     // The ability cards played on the current crawl, in order, for display (each
     // shown beneath its target room). Cleared when a new window opens.
     private val crawlPlays = mutableListOf<AbilityPlayRecord>()
+    // Human-readable events for each automated player's priority turn (played /
+    // boosted / passed), so the debug log records what the AIs did. The UI layer
+    // drains this after every action; the Game itself never logs.
+    private val crawlLog = mutableListOf<String>()
 
     /**
      * One action played on the current crawl, for display: who did it, a short
@@ -568,8 +572,22 @@ class Game(
             val play = agent.preCrawlPlay(
                 PreCrawlContext(actor, owner, party, owner.dungeon!!, owner.points, crawlModifiers)
             )
-            if (play != null) applyAbility(actor, play.cardId, play.target) else passOf()
+            if (play != null) {
+                val name = actor.abilityHand.firstOrNull { it.id == play.cardId }?.name ?: play.cardId
+                crawlLog.add("${actor.name} played $name" + (play.target?.let { " on encounter $it" } ?: ""))
+                applyAbility(actor, play.cardId, play.target)
+            } else {
+                crawlLog.add("${actor.name} passed")
+                passOf()
+            }
         }
+    }
+
+    /** Return and clear the automated players' crawl events since the last drain (for the debug log). */
+    fun drainCrawlLog(): List<String> {
+        val events = crawlLog.toList()
+        crawlLog.clear()
+        return events
     }
 
     /** The priority holder passes: count it and hand priority to the next player. */
@@ -825,7 +843,9 @@ class Game(
             if (!RoomEffect.boostable(room)) return@forEachIndexed
             if (crawlModifiers.boosted(i)) return@forEachIndexed
             val spare = owner.roomHand.firstOrNull()
-            if (spare != null && rng.nextDouble() < 0.5) applyBoost(owner, spare.id, i)
+            if (spare != null && rng.nextDouble() < 0.5 && applyBoost(owner, spare.id, i)) {
+                crawlLog.add("${owner.name} boosted encounter $i")
+            }
         }
     }
 
