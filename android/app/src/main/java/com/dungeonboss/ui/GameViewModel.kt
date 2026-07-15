@@ -15,6 +15,11 @@ import com.dungeonboss.game.Player
 import com.dungeonboss.model.Boss
 import com.dungeonboss.model.Encounter
 import com.dungeonboss.model.PlacedRoom
+import com.dungeonboss.net.MatchConfig
+import com.dungeonboss.net.MoveMessage
+import com.dungeonboss.net.OkHttpTransport
+import com.dungeonboss.net.OnlineMatch
+import com.dungeonboss.net.TransportListener
 import org.json.JSONObject
 import java.io.File
 
@@ -42,8 +47,23 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     var lastError by mutableStateOf<String?>(null)
         private set
 
+    // --- online play (see com.dungeonboss.net; server/) ---
+
+    enum class Matchmaking { IDLE, SEARCHING, MATCHED, ERROR }
+
+    /** The live online match, or null when playing locally (vs computers). */
+    var online: OnlineMatch? = null
+        private set
+
+    /** Where the online flow is (drives the "finding opponents…" overlay). */
+    var matchmaking by mutableStateOf(Matchmaking.IDLE)
+        private set
+
+    private var transport: OkHttpTransport? = null
+
     val human: Player?
-        get() = game?.players?.firstOrNull { game?.automated(it) == false }
+        get() = online?.localPlayer
+            ?: game?.players?.firstOrNull { game?.automated(it) == false }
 
     /** Absolute path of the uploadable debug log file. */
     fun logPath(): String = DebugLog.path()
@@ -62,6 +82,8 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Start a new game with 1 human and (count − 1) computer opponents (2–4 total). */
     fun newGame(playerCount: Int = 2) = safe("newGame($playerCount)") {
+        endOnline()
+        matchmaking = Matchmaking.IDLE
         val count = playerCount.coerceIn(MIN_PLAYERS, MAX_PLAYERS)
         DebugLog.log("newGame: players=$count")
         val library = loadLibrary()
@@ -122,6 +144,12 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Resolve the current pending decision (a blank choice means "skip"). */
     fun decide(choiceId: String?, target: Any? = null) = safe("decide(choice=$choiceId,target=$target)") {
+        online?.let {
+            // Online: send the move; it is applied when it returns from the server
+            // in order (see onMove). Do NOT apply locally.
+            it.submitLocal(choiceId, target)
+            return@safe
+        }
         val g = game ?: return@safe
         DebugLog.log(
             "decide before: stage=${g.stage} decision=${describe(g.currentDecision())} " +
@@ -131,7 +159,76 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         DebugLog.log("decide after:  stage=${g.stage} decision=${describe(g.currentDecision())}")
     }
 
+    /** The decision the local player should answer now (online: only our seat's). */
+    fun localDecision(): Decision? = online?.localDecision() ?: game?.currentDecision()
+
+    /** Online: the name of the seat we are waiting on (their turn), or null. */
+    fun waitingOnName(): String? = online?.let { m ->
+        m.waitingOnSeat()?.let { seat -> m.config.players.first { it.seat == seat }.name }
+    }
+
+    /** The local player's display name (online: our seat; offline: Player 1). */
+    fun localName(): String = online?.config?.localName ?: HUMAN_PLAYER
+
+    /**
+     * Enter matchmaking for a [players]-sized online table. Connects to the server
+     * and queues; the game starts on its own once the server pairs a full table.
+     */
+    fun playOnline(players: Int) = safe("playOnline($players)") {
+        endOnline()
+        game = null
+        val library = loadLibrary()
+        val name: String = android.os.Build.MODEL ?: "Player"
+        val t = OkHttpTransport(SERVER_URL)
+        t.listener = object : TransportListener {
+            override fun onQueued(players: Int, waiting: Int) = onMain {
+                matchmaking = Matchmaking.SEARCHING
+            }
+            override fun onMatched(config: MatchConfig) = onMain {
+                val m = OnlineMatch(
+                    library, config, t,
+                    onChanged = { bump() },
+                    onDesync = { msg -> lastError = "desync — $msg"; DebugLog.log("desync: $msg") },
+                )
+                online = m
+                game = m.game
+                matchmaking = Matchmaking.MATCHED
+                bump()
+            }
+            override fun onMove(move: MoveMessage) = onMain { online?.onMove(move); bump() }
+            override fun onError(message: String) = onMain {
+                matchmaking = Matchmaking.ERROR
+                lastError = "online: $message"
+            }
+            override fun onClosed() = onMain {
+                if (matchmaking == Matchmaking.SEARCHING) matchmaking = Matchmaking.IDLE
+            }
+        }
+        transport = t
+        matchmaking = Matchmaking.SEARCHING
+        t.connect()
+        t.queue(name, players.coerceIn(MIN_PLAYERS, MAX_PLAYERS))
+    }
+
+    /** Leave matchmaking / an online match and return to the start screen. */
+    fun cancelOnline() = safe("cancelOnline") {
+        endOnline()
+        game = null
+        matchmaking = Matchmaking.IDLE
+    }
+
+    private fun endOnline() {
+        transport?.cancel()
+        transport?.close()
+        transport = null
+        online = null
+    }
+
+    /** Post to the main thread (transport callbacks already are, but keep it explicit). */
+    private fun onMain(block: () -> Unit) = block()
+
     fun nextTurn() = safe("nextTurn") {
+        if (online != null) return@safe // online turns advance automatically (OnlineMatch.drive)
         val g = game ?: return@safe
         if (g.ready()) {
             g.startRound()
@@ -142,6 +239,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun sendNextParty() = safe("sendNextParty") {
+        if (online != null) return@safe // crawls resolve automatically online (OnlineMatch.drive)
         val g = game ?: return@safe
         DebugLog.log("sendNextParty: next=${g.nextCrawl()?.let { "${it.second.displayName()}->${it.first.name}" }}")
         g.sendNextParty()
@@ -178,6 +276,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Play an ability card from the human's hand on the current crawl (or quiet round). */
     fun playAbility(cardId: String, target: Any? = null) = safe("playAbility($cardId,$target)") {
+        if (online != null) return@safe // pre-crawl abilities are not networked in this MVP
         val g = game ?: return@safe
         human?.let { g.playAbility(it, cardId, target) }
         DebugLog.log("playAbility: $cardId target=$target stage=${g.stage}")
@@ -185,32 +284,40 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Discard a room card to boost the human's boostable room before its crawl. */
     fun boostRoom(cardId: String, roomIndex: Int) = safe("boostRoom($cardId,$roomIndex)") {
+        if (online != null) return@safe // not networked in this MVP
         game?.boostRoom(cardId, roomIndex)
         DebugLog.log("boostRoom: $cardId room=$roomIndex")
     }
 
+    // Undo actions mutate the local game directly, which would break lockstep, so
+    // they are disabled online (there is no shared "undo" in the move stream).
     /** Take back the most recent mandatory discard during building. */
     fun undoDiscard() = safe("undoDiscard") {
+        if (online != null) return@safe
         game?.undoDiscard()
     }
 
     /** Take back the boss choice during setup (before placing the first room). */
     fun undoBossChoice() = safe("undoBossChoice") {
+        if (online != null) return@safe
         game?.undoBossChoice()
     }
 
     /** Take back the most recent room placement (before any party has crawled). */
     fun undoPlacement() = safe("undoPlacement") {
+        if (online != null) return@safe
         game?.undoPlacement()
     }
 
     /** Take back the most recent ability card played in the pre-crawl window. */
     fun undoAbility() = safe("undoAbility") {
+        if (online != null) return@safe
         game?.undoAbility()
     }
 
     /** Finish a quiet round (everyone draws an ability card), then recruit. */
     fun finishQuietRound() = safe("finishQuietRound") {
+        if (online != null) return@safe // advances automatically online (OnlineMatch.drive)
         game?.finishQuietRound()
     }
 
@@ -240,5 +347,10 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         const val SAVE_FILE = "savegame.json"
         const val MIN_PLAYERS = 2
         const val MAX_PLAYERS = 4
+
+        // The deployed matchmaking server (server/). Use wss:// (TLS) in production;
+        // for a local server over adb, ws://10.0.2.2:8080 reaches the host from an
+        // emulator. TODO: set this to your server before shipping online play.
+        const val SERVER_URL = "wss://REPLACE-WITH-YOUR-SERVER-HOST"
     }
 }

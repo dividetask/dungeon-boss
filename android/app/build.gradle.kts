@@ -76,7 +76,14 @@ dependencies {
     // The canonical card data is YAML; both clients parse the same file.
     implementation("org.yaml:snakeyaml:2.2")
 
+    // Online multiplayer: WebSocket client to the matchmaking server (server/).
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     testImplementation("junit:junit:4.13.2")
+    // org.json ships in android.jar as un-mocked stubs that throw in local unit
+    // tests; the real implementation lets tests call Game.exportJson()/network
+    // JSON parsing (NetworkDeterminismTest, OnlineMatchTest).
+    testImplementation("org.json:json:20240303")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

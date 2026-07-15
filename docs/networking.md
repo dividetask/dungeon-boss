@@ -230,22 +230,52 @@ host-authoritative is the documented fallback.
    single `rng` through every deck, `PartyNamer`, and the auto-boost roll) plus
    `NetworkDeterminismTest` — same-seed shuffle/deal equality and a full seeded
    playthrough that stays byte-identical (via `exportJson`) to game over.
-2. **`RemoteAgent`** + the local-broadcast rule against an in-memory fake
-   transport (two `Game`s in one process kept in lockstep). *(next)*
-3. **Matchmaking server** — *(built)*: automatic pairing, move sequencing, move
-   log, reconnect; self-hosted Node service in `server/` with passing tests for
-   auto-match, sequenced relay, and reconnect-by-replay.
-4. **`NetworkTransport`** (Android WebSocket client) + `MoveMessage` /
-   `MatchConfig` (de)serialization against the server protocol.
-5. **`Matchmaking` + the "Play online" button** in the Android UI (a separate
-   entry point from "New game" / play-computer): connect, `queue`, show
-   "searching…", then start the match on `matched`.
-6. **`MatchClient`** wiring into the Android `GameViewModel`; **`DesyncGuard`**;
-   reconnect-by-replay and the disconnect policy.
+2. **Lockstep client core** — *(built)*: `OnlineMatch` (`android/.../net/`) owns an
+   agent-free `Game.seeded(seed)`, surfaces only the local seat's decisions, sends
+   each answer as a `MoveMessage`, and applies the server-ordered move stream via
+   `Game.decide` — then drives the input-free phases (crawl, recharge, next round)
+   locally. Proven by `OnlineMatchTest`: two `OnlineMatch` over an in-process fake
+   relay stay byte-identical to game over.
 
-Server-side (step 3) is done and tested. The remaining work is all **client-side**
-(steps 2, 4, 5, 6): teach the Android app to speak the protocol, add the button,
-and slot `RemoteAgent` into the existing `Agent` seam.
+   *Design refinement:* rather than a **blocking** `RemoteAgent` at the `Agent`
+   seam (which would force the engine loop onto a background thread), the online
+   game runs with **no agents** — the engine already pauses at every agentless
+   decision — and `OnlineMatch` decides per decision whether to surface it (local
+   seat) or wait for its move (remote seat). Cleaner and single-threaded.
+3. **Matchmaking server** — *(built)*: automatic pairing, move sequencing, move
+   log, reconnect; self-hosted Node service in `server/` with passing tests.
+4. **`NetworkTransport`** — *(built)*: `Transport` interface + `OkHttpTransport`
+   (Android WebSocket) speaking the server protocol; `MatchConfig` / `MoveMessage`
+   (de)serialization.
+5. **"Play online" button** — *(built)*: a separate start-screen entry point from
+   "New game" (which plays computers). Taps `GameViewModel.playOnline`, shows
+   "Finding opponents…", starts the match on `matched`, and shows "Waiting for …"
+   on a remote seat's turn.
+6. **Remaining:** `DesyncGuard` (state-hash checkpoints), reconnect-by-replay in
+   the app, the disconnect policy, and lifting the MVP limitations below.
+
+The **server** and the **client lockstep core + transport + button** are built.
+What's untested is compilation/run on device (this environment has no Android SDK).
+
+## MVP limitations (online client)
+
+Deliberately scoped out of the first online build; all are additive later:
+
+- **No pre-crawl abilities / discard-to-boost online.** Those are player inputs
+  that would need to become networked moves (with a "done" signal) and sequenced
+  before the crawl. Online, the crawl auto-resolves with no modifiers — which is
+  deterministic and correct, just less rich. Offline play keeps them.
+- **No crawl animation online.** `OnlineMatch` drives crawls directly (not through
+  the UI's `sendNextParty`), so the board jumps to the resolved state rather than
+  animating hit-by-hit. Functional, not pretty.
+- **Sequential building.** The engine resolves one decision at a time in a fixed
+  order, so players build one after another (each waits their turn) rather than
+  simultaneously — inherited from the engine, fine for turn-based play.
+- **Cosmetic labels.** "you" / "computer" / "P2" labels key off `automated()`,
+  which is false for every online seat, so opponents aren't visually distinguished
+  from the local player yet.
+- **No undo online.** Undo mutates the local game, which would break lockstep, so
+  it is disabled during online play.
 
 ## Open questions
 

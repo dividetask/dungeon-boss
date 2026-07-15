@@ -85,10 +85,13 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
     // the summaries and bottom bar stay in sync with the live game state.
     val tick = vm.tick
     val game = vm.game
-    val humanName = GameViewModel.HUMAN_PLAYER
+    // Online, the local player can be any seat; offline it is always Player 1.
+    val humanName = vm.localName()
 
-    val viewed = remember { mutableStateOf(humanName) }
-    val decision = game?.currentDecision()
+    val viewed = remember(humanName) { mutableStateOf(humanName) }
+    // Online, only surface a decision when it is THIS device's turn; otherwise the
+    // board shows "waiting for …" while the remote seat's move arrives.
+    val decision = vm.localDecision()
     var selection by remember(decision) { mutableStateOf<Selection?>(null) }
     // Room ids the human has tapped to discard this Discard phase, as a multiset
     // (an id repeats once per copy marked), so multiple copies of a card can be
@@ -209,7 +212,40 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                     }
                 }
 
-                if (game == null) {
+                // Online: it is another player's turn; their move will arrive shortly.
+                vm.waitingOnName()?.let { who ->
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFEAF2FB))
+                            .border(1.dp, Palette.Accent, RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        Text("Waiting for $who…", color = Palette.Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (game == null && vm.matchmaking == GameViewModel.Matchmaking.SEARCHING) {
+                    // Online: waiting for the server to pair a full table.
+                    Text(
+                        "Finding opponents…",
+                        color = Palette.SubText,
+                        fontSize = 16.sp,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                    Text(
+                        "Looking for $playerCount players to play online.",
+                        color = Palette.SubText,
+                        fontSize = 12.sp
+                    )
+                    Button(
+                        onClick = { vm.cancelOnline() },
+                        colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
+                    ) {
+                        Text("Cancel", color = Color.White)
+                    }
+                } else if (game == null) {
                     // Resume only works for a game still in progress; a finished (or
                     // absent) save leaves it greyed out and disabled.
                     val canResume = vm.savedGameInProgress()
@@ -229,6 +265,14 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
                     ) {
                         Text("New game", color = Color.White)
+                    }
+                    // A separate entry point from "New game" (which plays computers):
+                    // this matches you with other people over the internet.
+                    Button(
+                        onClick = { vm.playOnline(playerCount) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
+                    ) {
+                        Text("Play online", color = Color.White)
                     }
                 } else {
                     GameBody(
