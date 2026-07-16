@@ -201,6 +201,13 @@ What it provides, per match: automatic **pairing** of waiting players into 2–4
 player tables (no codes), **ordered** move fan-out (the server stamps `seq`),
 minting of the shared **seed**, and retention of the **move log** for reconnect.
 
+**Server address.** The client ships with a fixed domain
+(`GameViewModel.SERVER_URL` = `wss://dungeon-boss.logicalbuzz.com`) — a
+single-operator game needs no discovery service. Point that DNS record at the
+deployed server and terminate TLS there; the app connects on launch of an online
+match. **Player name:** each player sets a display name (persisted in prefs) that
+is sent with `queue` and shown to the others in the match.
+
 It is a single stateless Node process (matches live in memory); run one instance
 to start. Deploy behind TLS so phones connect over `wss://`. Google Play Games
 real-time multiplayer was **not** used: Google deprecated that API and it would
@@ -247,10 +254,10 @@ host-authoritative is the documented fallback.
 4. **`NetworkTransport`** — *(built)*: `Transport` interface + `OkHttpTransport`
    (Android WebSocket) speaking the server protocol; `MatchConfig` / `MoveMessage`
    (de)serialization.
-5. **"Play online" button** — *(built)*: a separate start-screen entry point from
-   "New game" (which plays computers). Taps `GameViewModel.playOnline`, shows
-   "Finding opponents…", starts the match on `matched`, and shows "Waiting for …"
-   on a remote seat's turn.
+5. **"Play online" button + name entry** — *(built)*: a separate start-screen
+   entry point from "New game" (which plays computers), with a persisted
+   display-name field. Taps `GameViewModel.playOnline`, shows "Finding opponents…",
+   starts the match on `matched`, and shows "Waiting for …" on a remote seat's turn.
 6. **Remaining:** `DesyncGuard` (state-hash checkpoints), reconnect-by-replay in
    the app, the disconnect policy, and lifting the MVP limitations below.
 

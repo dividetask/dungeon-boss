@@ -1,6 +1,7 @@
 package com.dungeonboss.ui
 
 import android.app.Application
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -60,6 +61,19 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     private var transport: OkHttpTransport? = null
+
+    private val prefs: android.content.SharedPreferences
+        get() = getApplication<Application>().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** The player's chosen display name for online play, remembered across runs. */
+    var playerName by mutableStateOf(prefs.getString(KEY_NAME, "") ?: "")
+        private set
+
+    /** Set and persist the player's online display name. */
+    fun setPlayerName(name: String) {
+        playerName = name.take(MAX_NAME)
+        prefs.edit().putString(KEY_NAME, playerName).apply()
+    }
 
     val human: Player?
         get() = online?.localPlayer
@@ -178,7 +192,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         endOnline()
         game = null
         val library = loadLibrary()
-        val name: String = android.os.Build.MODEL ?: "Player"
+        val name = playerName.trim().ifEmpty { "Player" }
         val t = OkHttpTransport(SERVER_URL)
         t.listener = object : TransportListener {
             override fun onQueued(players: Int, waiting: Int) = onMain {
@@ -348,9 +362,14 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         const val MIN_PLAYERS = 2
         const val MAX_PLAYERS = 4
 
-        // The deployed matchmaking server (server/). Use wss:// (TLS) in production;
-        // for a local server over adb, ws://10.0.2.2:8080 reaches the host from an
-        // emulator. TODO: set this to your server before shipping online play.
-        const val SERVER_URL = "wss://REPLACE-WITH-YOUR-SERVER-HOST"
+        const val PREFS = "dungeonboss"
+        const val KEY_NAME = "playerName"
+        const val MAX_NAME = 20
+
+        // The matchmaking server (server/) is at a fixed domain the app ships with —
+        // a single-operator game needs no discovery service. Point this DNS record
+        // at your deployed server and terminate TLS there (wss://). For local
+        // testing against an emulator host, swap in ws://10.0.2.2:8080.
+        const val SERVER_URL = "wss://dungeon-boss.logicalbuzz.com"
     }
 }

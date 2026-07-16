@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -267,7 +268,15 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         Text("New game", color = Color.White)
                     }
                     // A separate entry point from "New game" (which plays computers):
-                    // this matches you with other people over the internet.
+                    // this matches you with other people over the internet. Players
+                    // set a display name others in the match will see.
+                    OutlinedTextField(
+                        value = vm.playerName,
+                        onValueChange = { vm.setPlayerName(it) },
+                        label = { Text("Your name (for online play)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     Button(
                         onClick = { vm.playOnline(playerCount) },
                         colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
