@@ -43,6 +43,17 @@
 #                            (selector dims: type / bait / tag)
 #   tags                     classification tags (lowercased, optional)
 #
+# Copies in play scale with the player count (handled by the engine, not this
+# file): an N-player game uses N copies of each basic room, with ceil(N/2) of
+# those copies seeded into the build deck's DISCARD pile (they enter play only
+# after a reshuffle) and the rest in the draw pile —
+#   2 players → 2 copies, 1 in discard
+#   3 players → 3 copies, 2 in discard
+#   4 players → 4 copies, 2 in discard
+# Advanced rooms scale the same way — N players → N copies each — but always
+# start fully in the discard (no draw-pile copies). Each room's `copies` field
+# below is the maximum pool (enough for 4 players).
+#
 # A room's level starts at 0. It rises by 1 when grows_on_death triggers, and
 # by 1 (basic) / 2 (advanced) when a room card is spent to upgrade it during the
 # Build phase. Each damage line = base + increment * level.
@@ -90,26 +101,33 @@ rooms:
     lead_damage_increment: 0
     damage_all: 3
     damage_all_increment: 1
+    draw_on_death: true
     copies: 4
 
   # --- Growth rooms (basic, 4 damage, +1 per level, grow on death) ---
+  # Lower base (3) than the arcane/undead growers: glory has no bait reducer, so
+  # this is only soft-countered (the Barbarian it lures halves it), unlike
+  # Succubus/Zombies which their lured hero zeroes.
   - id: room_champion
     name: Hobgoblin Champion
     type: monster
     advanced: false
     bait: { glory: 1 }
-    lead_damage: 4
+    lead_damage: 3
     lead_damage_increment: 1
     grows_on_death: true
     tags: [hobgoblin, monstrous_humanoid]
     copies: 4
 
+  # Highest base (5) of the growers: arcane lures the Mage, whose -4 arcane aura
+  # zeroes a 4-damage hit — the extra point keeps it from being dead weight
+  # against the very hero it attracts.
   - id: room_succubus
     name: Succubus
     type: monster
     advanced: false
     bait: { arcane: 1 }
-    lead_damage: 4
+    lead_damage: 5
     lead_damage_increment: 1
     grows_on_death: true
     copies: 4
@@ -125,12 +143,15 @@ rooms:
     tags: [undead]
     copies: 4
 
+  # Lowest base (2) of the growers: riches lures the Rogue, who only reduces
+  # traps, so this monster is completely uncounterable (full damage vs everyone,
+  # including its own lure) — its low base pays for that reliability.
   - id: room_mimic
     name: Mimic
     type: monster
     advanced: false
     bait: { riches: 1 }
-    lead_damage: 4
+    lead_damage: 2
     lead_damage_increment: 1
     grows_on_death: true
     copies: 4
@@ -146,16 +167,16 @@ rooms:
     draw_on_death: true
     copies: 4
 
-  - id: room_soul_leach
-    name: Soul Leach
+  - id: room_cursed_ring
+    name: Cursed Ring
     type: trap
     advanced: false
-    bait: { arcane: 1, riches: 1 }
-    lead_damage: 0
-    lead_damage_increment: 0
-    damage_all: 2
-    damage_all_increment: 1
-    draw_on_death: true
+    bait: { riches: 1, arcane: 1 }
+    lead_damage: 2
+    lead_damage_increment: 1
+    room_resist: true
+    poison_damage: 2
+    poison_persists: true
     tags: [arcane]
     copies: 4
 
@@ -246,7 +267,7 @@ advanced_rooms:
     damage_filter: mage
     room_resist: true
     tags: [arcane]
-    copies: 2
+    copies: 4
 
   - id: adv_zealots
     name: Zealots
@@ -260,7 +281,7 @@ advanced_rooms:
     damage_filter: cleric
     room_resist: true
     tags: [undead]
-    copies: 2
+    copies: 4
 
   - id: adv_false_trigger
     name: False Trigger
@@ -273,7 +294,7 @@ advanced_rooms:
     damage_all_increment: 1
     damage_filter: rogue
     room_resist: true
-    copies: 2
+    copies: 4
 
   # --- Unreducible / unhalvable growth bruisers ---
   - id: adv_gladiator
@@ -282,11 +303,11 @@ advanced_rooms:
     advanced: true
     bait: { glory: 1 }
     lead_damage: 4
-    lead_damage_increment: 1
+    lead_damage_increment: 2
     grows_on_death: true
     room_resist: true
     tags: [monstrous_humanoid]
-    copies: 2
+    copies: 4
 
   - id: adv_troll
     name: Troll
@@ -297,44 +318,52 @@ advanced_rooms:
     lead_damage_increment: 4
     grows_on_death: true
     tags: [monstrous_humanoid]
-    copies: 2
+    copies: 4
 
+  # Shadow: a fast grower that strikes the weakest hero first (rear, cascading
+  # upward) and can't be halved — the Barbarian's self-halve does nothing to it
+  # (but hero reductions still apply). Every kill raises its level by 1, and with
+  # +2 rear per level it snowballs quickly, picking off the frail.
   - id: adv_shadow
     name: Shadow
     type: monster
     advanced: true
     bait: { undead: 1 }
-    lead_damage: 6
-    lead_damage_increment: 1
+    lead_damage: 0
+    lead_damage_increment: 0
+    damage_rear: 6
+    damage_rear_increment: 2
     grows_on_death: true
     room_resist: false
     tags: [undead]
-    copies: 2
+    copies: 4
 
+  # Wight: a drainer — raises the slain as reinforcements. It draws a room +
+  # ability card per hero that dies here (card advantage) rather than snowballing
+  # its own level. (Internal id stays adv_wright; only the display name changed.)
   - id: adv_wright
-    name: Wright
+    name: Wight
     type: monster
     advanced: true
     bait: { undead: 1 }
     lead_damage: 6
     lead_damage_increment: 1
-    grows_on_death: true
-    room_resist: false
+    draw_on_death: true
     tags: [undead]
-    copies: 2
+    copies: 4
 
-  # --- Cursed Ring: unreducible + persisting poison, grows per level ---
-  - id: adv_cursed_ring
-    name: Cursed Ring
+  # --- Mirror: reflects the party's toughest hero — deals damage equal to the
+  #     highest max HP in the party as an unreducible lead hit (cascades). ---
+  - id: adv_mirror
+    name: Mirror
     type: trap
     advanced: true
-    bait: { riches: 1 }
-    lead_damage: 2
-    lead_damage_increment: 1
+    bait: { glory: 1, arcane: 1 }
+    lead_damage: 0
+    lead_damage_increment: 0
+    lead_max_party_hp: true
     room_resist: true
-    poison_damage: 2
-    poison_persists: true
-    copies: 2
+    copies: 4
 
   # --- Black Tentacles: chip everyone, smash the most injured ---
   - id: adv_black_tentacles
@@ -349,7 +378,7 @@ advanced_rooms:
     damage_rear: 5
     damage_rear_increment: 1
     tags: [arcane]
-    copies: 2
+    copies: 4
 
   # --- Maze: poison resolves 3x here (helps when a poison trap precedes it) ---
   - id: adv_maze
@@ -363,11 +392,11 @@ advanced_rooms:
     damage_all_increment: 1
     poison_ticks: 3
     tags: [arcane]
-    copies: 2
+    copies: 4
 
   # --- Aura rooms (re-added): buff other traps / creatures ---
   - id: adv_trap_makers_workshop
-    name: Trap Makers Workshop
+    name: Trap Maker's Workshop
     type: trap
     advanced: true
     bait: { riches: 1 }
@@ -376,7 +405,7 @@ advanced_rooms:
     room_aura:
       match: { type: trap }
       amount: 2
-    copies: 2
+    copies: 4
 
   - id: adv_beast_tamer
     name: Hobgoblin Beastmaster
@@ -389,4 +418,4 @@ advanced_rooms:
       match: { type: creature }
       amount: 2
     tags: [hobgoblin, monstrous_humanoid]
-    copies: 2
+    copies: 4

@@ -7,10 +7,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import com.dungeonboss.data.CardLibrary
+import com.dungeonboss.game.Agent
 import com.dungeonboss.game.Decision
 import com.dungeonboss.game.Game
 import com.dungeonboss.game.LogicAgent
 import com.dungeonboss.game.Player
+import com.dungeonboss.model.Boss
+import com.dungeonboss.model.Encounter
+import com.dungeonboss.model.PlacedRoom
+import org.json.JSONObject
+import java.io.File
 
 /**
  * Holds the in-memory [Game] and exposes it to the composition. The Game mutates
@@ -42,11 +48,23 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
     /** Absolute path of the uploadable debug log file. */
     fun logPath(): String = DebugLog.path()
 
+    /** The autosave file (internal storage), so a game survives an app kill/reboot. */
+    private val saveFile: File get() = File(getApplication<Application>().filesDir, SAVE_FILE)
+
+    private fun loadLibrary(): CardLibrary =
+        getApplication<Application>().assets.open(CARDS_ASSET).use { CardLibrary.load(it) }
+
+    /** LogicAgent opponents for every non-human name (Player 2..N). */
+    private fun buildAgents(names: List<String>): Map<String, Agent> {
+        val assets = getApplication<Application>().assets
+        return names.drop(1).associateWith { assets.open(AI_LOGIC_ASSET).use { s -> LogicAgent.load(s) } }
+    }
+
     /** Start a new game with 1 human and (count − 1) computer opponents (2–4 total). */
     fun newGame(playerCount: Int = 2) = safe("newGame($playerCount)") {
         val count = playerCount.coerceIn(MIN_PLAYERS, MAX_PLAYERS)
         DebugLog.log("newGame: players=$count")
-        val library = getApplication<Application>().assets.open(CARDS_ASSET).use { CardLibrary.load(it) }
+        val library = loadLibrary()
         DebugLog.log(
             "loaded library: bosses=${library.bosses.size} rooms=${library.rooms.size} " +
                 "advanced=${library.advancedRooms.size} " +
@@ -55,11 +73,51 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         val names = (1..count).map { "Player $it" }
         // Player 1 is the human; every other player is a LogicAgent computer
         // opponent that reads its strategy from ai_logic.yaml.
-        val assets = getApplication<Application>().assets
-        val agents = names.drop(1).associateWith { assets.open(AI_LOGIC_ASSET).use { s -> LogicAgent.load(s) } }
-        game = Game(library, names, agentsByName = agents).start()
+        game = Game(library, names, agentsByName = buildAgents(names)).start()
         lastError = null
         DebugLog.log("newGame: started stage=${game?.stage} decision=${describe(game?.currentDecision())}")
+    }
+
+    /** True if a saved game is on disk (for a start-screen "Resume"/"New game" choice). */
+    fun hasSavedGame(): Boolean = saveFile.exists()
+
+    /** True only if the saved game exists AND is still in progress (not finished). */
+    fun savedGameInProgress(): Boolean {
+        if (!saveFile.exists()) return false
+        return try {
+            JSONObject(saveFile.readText()).optString("stage") != "OVER"
+        } catch (t: Throwable) {
+            false
+        }
+    }
+
+    /** Load the saved game if present; a corrupt/old save is discarded, never fatal. */
+    fun restoreIfSaved() {
+        if (!saveFile.exists()) return
+        try {
+            val text = saveFile.readText()
+            val names = JSONObject(text).getJSONArray("players").let { arr ->
+                (0 until arr.length()).map { arr.getJSONObject(it).getString("name") }
+            }
+            game = Game.importJson(text, loadLibrary(), buildAgents(names))
+            lastError = null
+            DebugLog.log("restored save: round=${game?.round} stage=${game?.stage}")
+            bump()
+        } catch (t: Throwable) {
+            DebugLog.error("restore failed; discarding save", t)
+            runCatching { saveFile.delete() }
+            game = null
+        }
+    }
+
+    /** Persist the game whenever it sits at a stable, non-crawl point. */
+    private fun autosave() {
+        val g = game ?: return
+        try {
+            if (g.savable()) saveFile.writeText(g.exportJson())
+        } catch (t: Throwable) {
+            DebugLog.error("autosave failed", t)
+        }
     }
 
     /** Resolve the current pending decision (a blank choice means "skip"). */
@@ -88,7 +146,34 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         DebugLog.log("sendNextParty: next=${g.nextCrawl()?.let { "${it.second.displayName()}->${it.first.name}" }}")
         g.sendNextParty()
         sendCounter += 1
+        logCrawl(g)
         DebugLog.log("sendNextParty: after stage=${g.stage}")
+    }
+
+    /** Log the just-resolved crawl hit-by-hit so logs capture per-hit damage. */
+    private fun logCrawl(g: Game) {
+        val o = g.lastOutcomes.firstOrNull() ?: return
+        val r = o.result
+        DebugLog.log(
+            "crawl: ${o.party.displayName()} -> ${o.player.name}'s dungeon" +
+                (if (o.retreated) " [RETREATED]" else "") + " (boss +${o.bossBonus})"
+        )
+        if (r.log.isEmpty()) DebugLog.log("  (no damage dealt)")
+        r.log.forEach { s ->
+            DebugLog.log(
+                "  [${s.roomIndex}] ${encName(s.encounter)}: ${s.hero.name} " +
+                    "-${s.damage} -> ${s.healthAfter} hp" + if (s.died) "  ** DIED **" else ""
+            )
+        }
+        DebugLog.log(
+            "  => deaths=${r.deaths}, survivors=[${r.survivors.joinToString(", ") { it.name }}]"
+        )
+    }
+
+    private fun encName(e: Encounter): String = when (e) {
+        is PlacedRoom -> e.name
+        is Boss -> e.name
+        else -> e.type ?: "encounter"
     }
 
     /** Play an ability card from the human's hand on the current crawl (or quiet round). */
@@ -140,6 +225,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
             DebugLog.error("action $label failed", t)
             lastError = "$label failed — ${t.javaClass.simpleName}: ${t.message}"
         }
+        autosave()
         bump()
     }
 
@@ -151,6 +237,7 @@ class GameViewModel(app: Application) : AndroidViewModel(app) {
         const val HUMAN_PLAYER = "Player 1"
         const val CARDS_ASSET = "cards.yaml"
         const val AI_LOGIC_ASSET = "ai_logic.yaml"
+        const val SAVE_FILE = "savegame.json"
         const val MIN_PLAYERS = 2
         const val MAX_PLAYERS = 4
     }

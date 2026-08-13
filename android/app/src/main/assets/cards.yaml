@@ -155,26 +155,33 @@ rooms:
     lead_damage_increment: 0
     damage_all: 3
     damage_all_increment: 1
+    draw_on_death: true
     copies: 4
 
   # --- Growth rooms (basic, 4 damage, +1 per level, grow on death) ---
+  # Lower base (3) than the arcane/undead growers: glory has no bait reducer, so
+  # this is only soft-countered (the Barbarian it lures halves it), unlike
+  # Succubus/Zombies which their lured hero zeroes.
   - id: room_champion
     name: Hobgoblin Champion
     type: monster
     advanced: false
     bait: { glory: 1 }
-    lead_damage: 4
+    lead_damage: 3
     lead_damage_increment: 1
     grows_on_death: true
     tags: [hobgoblin, monstrous_humanoid]
     copies: 4
 
+  # Highest base (5) of the growers: arcane lures the Mage, whose -4 arcane aura
+  # zeroes a 4-damage hit — the extra point keeps it from being dead weight
+  # against the very hero it attracts.
   - id: room_succubus
     name: Succubus
     type: monster
     advanced: false
     bait: { arcane: 1 }
-    lead_damage: 4
+    lead_damage: 5
     lead_damage_increment: 1
     grows_on_death: true
     copies: 4
@@ -190,12 +197,15 @@ rooms:
     tags: [undead]
     copies: 4
 
+  # Lowest base (2) of the growers: riches lures the Rogue, who only reduces
+  # traps, so this monster is completely uncounterable (full damage vs everyone,
+  # including its own lure) — its low base pays for that reliability.
   - id: room_mimic
     name: Mimic
     type: monster
     advanced: false
     bait: { riches: 1 }
-    lead_damage: 4
+    lead_damage: 2
     lead_damage_increment: 1
     grows_on_death: true
     copies: 4
@@ -211,16 +221,16 @@ rooms:
     draw_on_death: true
     copies: 4
 
-  - id: room_soul_leach
-    name: Soul Leach
+  - id: room_cursed_ring
+    name: Cursed Ring
     type: trap
     advanced: false
-    bait: { arcane: 1, riches: 1 }
-    lead_damage: 0
-    lead_damage_increment: 0
-    damage_all: 2
-    damage_all_increment: 1
-    draw_on_death: true
+    bait: { riches: 1, arcane: 1 }
+    lead_damage: 2
+    lead_damage_increment: 1
+    room_resist: true
+    poison_damage: 2
+    poison_persists: true
     tags: [arcane]
     copies: 4
 
@@ -311,7 +321,7 @@ advanced_rooms:
     damage_filter: mage
     room_resist: true
     tags: [arcane]
-    copies: 2
+    copies: 4
 
   - id: adv_zealots
     name: Zealots
@@ -325,7 +335,7 @@ advanced_rooms:
     damage_filter: cleric
     room_resist: true
     tags: [undead]
-    copies: 2
+    copies: 4
 
   - id: adv_false_trigger
     name: False Trigger
@@ -338,7 +348,7 @@ advanced_rooms:
     damage_all_increment: 1
     damage_filter: rogue
     room_resist: true
-    copies: 2
+    copies: 4
 
   # --- Unreducible / unhalvable growth bruisers ---
   - id: adv_gladiator
@@ -347,11 +357,11 @@ advanced_rooms:
     advanced: true
     bait: { glory: 1 }
     lead_damage: 4
-    lead_damage_increment: 1
+    lead_damage_increment: 2
     grows_on_death: true
     room_resist: true
     tags: [monstrous_humanoid]
-    copies: 2
+    copies: 4
 
   - id: adv_troll
     name: Troll
@@ -362,44 +372,52 @@ advanced_rooms:
     lead_damage_increment: 4
     grows_on_death: true
     tags: [monstrous_humanoid]
-    copies: 2
+    copies: 4
 
+  # Shadow: a fast grower that strikes the weakest hero first (rear, cascading
+  # upward) and can't be halved — the Barbarian's self-halve does nothing to it
+  # (but hero reductions still apply). Every kill raises its level by 1, and with
+  # +2 rear per level it snowballs quickly, picking off the frail.
   - id: adv_shadow
     name: Shadow
     type: monster
     advanced: true
     bait: { undead: 1 }
-    lead_damage: 6
-    lead_damage_increment: 1
+    lead_damage: 0
+    lead_damage_increment: 0
+    damage_rear: 6
+    damage_rear_increment: 2
     grows_on_death: true
     room_resist: false
     tags: [undead]
-    copies: 2
+    copies: 4
 
+  # Wight: a drainer — raises the slain as reinforcements. It draws a room +
+  # ability card per hero that dies here (card advantage) rather than snowballing
+  # its own level. (Internal id stays adv_wright; only the display name changed.)
   - id: adv_wright
-    name: Wright
+    name: Wight
     type: monster
     advanced: true
     bait: { undead: 1 }
     lead_damage: 6
     lead_damage_increment: 1
-    grows_on_death: true
-    room_resist: false
+    draw_on_death: true
     tags: [undead]
-    copies: 2
+    copies: 4
 
-  # --- Cursed Ring: unreducible + persisting poison, grows per level ---
-  - id: adv_cursed_ring
-    name: Cursed Ring
+  # --- Mirror: reflects the party's toughest hero — deals damage equal to the
+  #     highest max HP in the party as an unreducible lead hit (cascades). ---
+  - id: adv_mirror
+    name: Mirror
     type: trap
     advanced: true
-    bait: { riches: 1 }
-    lead_damage: 2
-    lead_damage_increment: 1
+    bait: { glory: 1, arcane: 1 }
+    lead_damage: 0
+    lead_damage_increment: 0
+    lead_max_party_hp: true
     room_resist: true
-    poison_damage: 2
-    poison_persists: true
-    copies: 2
+    copies: 4
 
   # --- Black Tentacles: chip everyone, smash the most injured ---
   - id: adv_black_tentacles
@@ -414,7 +432,7 @@ advanced_rooms:
     damage_rear: 5
     damage_rear_increment: 1
     tags: [arcane]
-    copies: 2
+    copies: 4
 
   # --- Maze: poison resolves 3x here (helps when a poison trap precedes it) ---
   - id: adv_maze
@@ -428,11 +446,11 @@ advanced_rooms:
     damage_all_increment: 1
     poison_ticks: 3
     tags: [arcane]
-    copies: 2
+    copies: 4
 
   # --- Aura rooms: buff other traps / creatures ---
   - id: adv_trap_makers_workshop
-    name: Trap Makers Workshop
+    name: Trap Maker's Workshop
     type: trap
     advanced: true
     bait: { riches: 1 }
@@ -441,7 +459,7 @@ advanced_rooms:
     room_aura:
       match: { type: trap }
       amount: 2
-    copies: 2
+    copies: 4
 
   - id: adv_beast_tamer
     name: Hobgoblin Beastmaster
@@ -454,12 +472,13 @@ advanced_rooms:
       match: { type: creature }
       amount: 2
     tags: [hobgoblin, monstrous_humanoid]
-    copies: 2
+    copies: 4
 
 # ===== heroes (from data/cards/heroes.yaml) =====
-# Data-driven heroes (see docs/cards.md). Level starts at floor(round/4), +1 per
-# survived crawl. maxHP = starting_hp + floor(level*hp_level_increment);
-# courage = starting_courage + level; party reduce = party_damage_reduction + floor(level*increment).
+# Data-driven heroes (see docs/cards.md). Level starts at floor(round/4)+1 (min 1),
+# +1 per survived crawl. Stats use (level-1) so level 1 = base:
+# maxHP = starting_hp + floor((level-1)*hp_level_increment);
+# courage = starting_courage + (level-1); party reduce = party_damage_reduction + floor((level-1)*increment).
 heroes:
   - id: hero_barbarian
     name: Barbarian
@@ -521,14 +540,14 @@ heroes:
 
 ability_cards:
   - id: ability_extra_damage
-    name: Reinforcements
+    name: Bolster
     effect:
       add_damage: 4
     text: "Target room deals 4 additional damage"
     copies: 8
 
   - id: ability_full_damage
-    name: Expose Weakness
+    name: Counter
     effect:
       unreducible: true
     text: "Target room deals full damage (no damage reduction)"

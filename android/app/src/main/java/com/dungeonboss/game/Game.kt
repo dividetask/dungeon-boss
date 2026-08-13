@@ -10,6 +10,7 @@ import com.dungeonboss.game.phases.GauntletPhase
 import com.dungeonboss.game.phases.RechargePhase
 import com.dungeonboss.game.phases.SetupPhase
 import com.dungeonboss.model.AbilityCard
+import com.dungeonboss.model.Bait
 import com.dungeonboss.model.Boss
 import com.dungeonboss.model.BuildCard
 import com.dungeonboss.model.Card
@@ -17,6 +18,8 @@ import com.dungeonboss.model.Hero
 import com.dungeonboss.model.PlacedRoom
 import com.dungeonboss.model.Room
 import kotlin.random.Random
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Owns the players and decks and drives the turn as a sequence of player
@@ -43,13 +46,35 @@ class Game(
     val players: List<Player> = playerNames.map { Player(it) }
 
     val bossDeck: Deck<Boss> = Deck(library.bosses, rng).shuffle()
-    // Basic and advanced rooms share one build deck. Advanced rooms seed the
-    // discard pile so they can't be in an opening hand; they enter circulation
-    // only after the first reshuffle.
-    val roomDeck: Deck<BuildCard> =
-        Deck<BuildCard>(library.rooms, rng).shuffle().also { deck ->
-            library.advancedRooms.forEach { deck.discard(it) }
+    // Basic and advanced rooms share one build deck. The number of copies of each
+    // basic room scales with the player count: N players → N copies of every basic
+    // room, with ceil(N/2) of those copies seeded into the discard pile (so they
+    // only enter play after a reshuffle) and the rest forming the draw pile.
+    //   2 players → 2 copies, 1 in discard
+    //   3 players → 3 copies, 2 in discard
+    //   4 players → 4 copies, 2 in discard
+    // Advanced rooms also scale with the player count — N players → N copies of
+    // each advanced room — but always seed the discard pile (they can't be in an
+    // opening hand). The card library holds enough copies of every room to cover
+    // 4 players.
+    val roomDeck: Deck<BuildCard> = run {
+        val copiesPerCard = players.size
+        val toDiscard = (players.size + 1) / 2   // ceil(N/2)
+        val draw = mutableListOf<BuildCard>()
+        val seeded = mutableListOf<BuildCard>()
+        library.rooms.groupBy { it.id }.values.forEach { copies ->
+            val used = copies.take(copiesPerCard)
+            val n = toDiscard.coerceIn(0, used.size)
+            seeded.addAll(used.take(n))
+            draw.addAll(used.drop(n))
         }
+        Deck<BuildCard>(draw, rng).shuffle().also { deck ->
+            seeded.forEach { deck.discard(it) }
+            library.advancedRooms.groupBy { it.id }.values.forEach { copies ->
+                copies.take(copiesPerCard).forEach { deck.discard(it) }
+            }
+        }
+    }
     val heroDeck: Deck<Hero> = Deck(library.heroes, rng).shuffle()
     val abilityDeck: Deck<AbilityCard> = Deck(library.abilityCards, rng).shuffle()
 
@@ -71,6 +96,8 @@ class Game(
 
     private val decisions = ArrayDeque<Decision>()
     private val crawlQueue = mutableListOf<Party>()           // parties still to evaluate this turn
+    private val turnParties = mutableListOf<Party>()          // stable ordered snapshot of the turn's parties (UI)
+    private val turnOutcomes = LinkedHashMap<Party, GauntletPhase.Outcome>() // resolved crawl per party this turn (UI)
     private var currentCrawl: Pair<Player, Party>? = null     // party in the pre-crawl window
     private var anyEntered = false                            // did any party enter this turn?
     private val attackedThisTurn = mutableSetOf<Player>()     // players whose dungeon was crawled
@@ -136,7 +163,12 @@ class Game(
 
         round += 1
         lastOutcomes = emptyList() // clear last turn's crawl so it doesn't linger
+        // The crawl-progress row shows the finished crawl through the following
+        // READY, then clears here so it's empty during the new turn's build.
+        turnParties.clear()
+        turnOutcomes.clear()
         undoablePlacement = null
+        undoableDiscard = null // a new turn starts fresh; last turn's discard is final
         undoableAbilities.clear()
         ArrivalPhase.run(this)
         // Discard (0–2, optional) then Build, per living player. The Draw phase runs
@@ -164,6 +196,7 @@ class Game(
         agentPreCrawl(player)
         val outcome = GauntletPhase.resolveParty(this, player, party, crawlModifiers)
         lastOutcomes = listOf(outcome)
+        turnOutcomes[party] = outcome    // retained for the crawl-progress row's fate markers
         crawlSurvivors.addAll(outcome.result.survivors) // survivors level up in Recharge
         applyDeathDraws(player, outcome.result)
         currentCrawl = null
@@ -277,6 +310,22 @@ class Game(
 
     /** The party currently in the pre-crawl window, or null. */
     fun nextCrawl(): Pair<Player, Party>? = currentCrawl
+
+    /**
+     * Ordered snapshot of every party that will be evaluated for a crawl this
+     * turn (town order, captured when the Crawl phase begins). Drives the
+     * crawl-progress row: its position of [nextCrawl] marks which have already
+     * been dealt with (before), which is about to go (at), and which still wait
+     * (after). Empty outside the Crawl phase.
+     */
+    fun crawlOrder(): List<Party> = turnParties.toList()
+
+    /**
+     * The resolved crawl for [party] this turn, or null if it has not crawled yet
+     * (or never entered a dungeon). Lets the crawl-progress row mark each member
+     * as died / survived / fled once its party has gone.
+     */
+    fun crawlOutcomeFor(party: Party): GauntletPhase.Outcome? = turnOutcomes[party]
 
     /**
      * Predict the result of the pending crawl WITHOUT committing it — who dies,
@@ -440,9 +489,13 @@ class Game(
         if (choiceId == null && !decision.allowSkip) {
             throw IllegalArgumentException("${decision.kind} requires a choice")
         }
-        // A discard becomes the new undoable action; any other choice closes the
-        // window on the previous discard.
-        if (decision.kind != DecisionKind.DISCARD_ROOMS) undoableDiscard = null
+        // A discard becomes the new undoable action, and it stays undoable through
+        // the Build that follows so the player can unwind the whole turn (undo the
+        // room, then the discard). Any OTHER choice closes the window on it; the
+        // turn/round and crawl boundaries clear it too.
+        if (decision.kind != DecisionKind.DISCARD_ROOMS && decision.kind != DecisionKind.BUILD_ROOM) {
+            undoableDiscard = null
+        }
         apply(decision, choiceId, target)
         resolveIfIdle()
     }
@@ -479,7 +532,9 @@ class Game(
                 val discarded = DiscardPhase.discard(this, player, ids)
                 // Draw 1 + (cards discarded), capturing the drawn cards for undo.
                 val drawn = drawRoomsFor(player, DrawPhase.BASE_DRAW + discarded.size)
-                undoableDiscard = UndoableDiscard(player, discarded, drawn)
+                // Only the human's discard is undoable; an agent's must not clobber
+                // it (agents build after the human, sharing this field).
+                if (!automated(player)) undoableDiscard = UndoableDiscard(player, discarded, drawn)
             }
             DecisionKind.BUILD_ROOM -> {
                 val player = decision.player
@@ -584,6 +639,9 @@ class Game(
                 // Entice + Gauntlet combined: evaluate parties for entry one at a time.
                 crawlQueue.clear()
                 crawlQueue.addAll(town)
+                turnParties.clear()
+                turnParties.addAll(town)          // stable order for the crawl-progress row
+                turnOutcomes.clear()
                 waitingParties = mutableListOf()
                 anyEntered = false
                 attackedThisTurn.clear()
@@ -633,5 +691,215 @@ class Game(
         null -> null
         is Int -> target
         else -> target.toString().trim().ifEmpty { null }?.toIntOrNull()
+    }
+
+    // ---------------------------------------------------------------------
+    // Persistence: full-state snapshot to/from JSON. Only meaningful at a
+    // stable, non-crawl stage — the transient crawl/recharge fields are empty
+    // there, so they are not serialized. Card definitions come from the asset
+    // library on restore; we store only ids plus the mutable per-instance state
+    // (room level + granted bait, hero level). See GameViewModel autosave.
+    // ---------------------------------------------------------------------
+
+    /** True when the state is at a stable point safe to serialize/restore. */
+    fun savable(): Boolean =
+        stage == Stage.SETUP || stage == Stage.BUILDING || stage == Stage.READY || stage == Stage.OVER
+
+    fun exportJson(): String {
+        val root = JSONObject()
+        root.put("v", SAVE_VERSION)
+        root.put("round", round)
+        root.put("stage", stage.name)
+        winner?.let { root.put("winner", it.name) }
+        endedBy?.let { root.put("endedBy", it.name) }
+
+        val playersJson = JSONArray()
+        for (p in players) {
+            val pj = JSONObject()
+            pj.put("name", p.name)
+            pj.put("points", p.points)
+            pj.put("wounds", p.wounds)
+            pj.put("roomHand", JSONArray(p.roomHand.map { it.id }))
+            pj.put("abilityHand", JSONArray(p.abilityHand.map { it.id }))
+            p.dungeon?.let { d ->
+                pj.put("boss", d.boss.id)
+                val slots = JSONArray()
+                for (slot in d.slots) {
+                    if (slot == null) {
+                        slots.put(JSONObject.NULL)
+                    } else {
+                        val bait = JSONObject()
+                        slot.grantedBaitMap().forEach { (b, c) -> bait.put(b.name.lowercase(), c) }
+                        slots.put(
+                            JSONObject().put("room", slot.baseRoom.id)
+                                .put("level", slot.level).put("bait", bait)
+                        )
+                    }
+                }
+                pj.put("dungeon", slots)
+            }
+            playersJson.put(pj)
+        }
+        root.put("players", playersJson)
+
+        val decks = JSONObject()
+        decks.put("boss", deckIdsJson(bossDeck) { it.id })
+        decks.put("room", deckIdsJson(roomDeck) { it.id })
+        decks.put("ability", deckIdsJson(abilityDeck) { it.id })
+        val (hdraw, hdisc) = heroDeck.snapshot()
+        decks.put("hero", JSONObject().put("draw", heroesJson(hdraw)).put("discard", heroesJson(hdisc)))
+        root.put("decks", decks)
+
+        val townJson = JSONArray()
+        for (party in town) {
+            townJson.put(JSONObject().put("name", party.name ?: JSONObject.NULL).put("members", heroesJson(party.heroes)))
+        }
+        root.put("town", townJson)
+
+        val decJson = JSONArray()
+        for (d in decisions) {
+            decJson.put(JSONObject().put("kind", d.kind.name).put("player", d.player.name).put("skip", d.allowSkip))
+        }
+        root.put("decisions", decJson)
+
+        val cand = JSONObject()
+        for ((pl, bosses) in bossCandidates) cand.put(pl.name, JSONArray(bosses.map { it.id }))
+        root.put("bossCandidates", cand)
+
+        return root.toString()
+    }
+
+    private fun <T> deckIdsJson(deck: Deck<T>, id: (T) -> String): JSONObject {
+        val (draw, discard) = deck.snapshot()
+        return JSONObject().put("draw", JSONArray(draw.map(id))).put("discard", JSONArray(discard.map(id)))
+    }
+
+    private fun heroesJson(heroes: List<Hero>): JSONArray {
+        val arr = JSONArray()
+        heroes.forEach { arr.put(JSONObject().put("id", it.id).put("level", it.level)) }
+        return arr
+    }
+
+    companion object {
+        const val SAVE_VERSION = 1
+
+        /**
+         * Rebuild a game from an [exportJson] snapshot, minting fresh card
+         * instances from [library] by id. Throws on any inconsistency (an unknown
+         * id, a missing field) so the caller can discard a corrupt/old save.
+         */
+        fun importJson(text: String, library: CardLibrary, agentsByName: Map<String, Agent>): Game {
+            val root = JSONObject(text)
+            require(root.optInt("v", -1) == SAVE_VERSION) { "unsupported save version" }
+
+            val playersJson = root.getJSONArray("players")
+            val names = (0 until playersJson.length()).map { playersJson.getJSONObject(it).getString("name") }
+            val game = Game(library, names, agentsByName = agentsByName)
+
+            val bossQ = queueById(library.bosses) { it.id }
+            // Rooms and advanced rooms share the build deck (Deck<BuildCard>); Room
+            // is the only BuildCard, so the queue is typed BuildCard and cast to
+            // Room where a placed room needs one.
+            val roomQ = queueById<BuildCard>(library.rooms + library.advancedRooms) { it.id }
+            val heroQ = queueById(library.heroes) { it.id }
+            val abilQ = queueById(library.abilityCards) { it.id }
+
+            game.round = root.getInt("round")
+            game.stage = Stage.valueOf(root.getString("stage"))
+
+            for (i in 0 until playersJson.length()) {
+                val pj = playersJson.getJSONObject(i)
+                val p = game.players.first { it.name == pj.getString("name") }
+                p.points = pj.getInt("points")
+                p.wounds = pj.getInt("wounds")
+                p.roomHand.clear()
+                idList(pj.getJSONArray("roomHand")).forEach { p.roomHand.add(take(roomQ, it)) }
+                p.abilityHand.clear()
+                idList(pj.getJSONArray("abilityHand")).forEach { p.abilityHand.add(take(abilQ, it)) }
+                if (pj.has("boss")) {
+                    val dungeon = Dungeon(take(bossQ, pj.getString("boss")))
+                    val slots = pj.getJSONArray("dungeon")
+                    val restored = ArrayList<PlacedRoom?>()
+                    for (s in 0 until slots.length()) {
+                        if (slots.isNull(s)) {
+                            restored.add(null)
+                        } else {
+                            val sj = slots.getJSONObject(s)
+                            val bj = sj.getJSONObject("bait")
+                            val bait = LinkedHashMap<Bait, Int>()
+                            bj.keys().forEach { k -> bait[Bait.normalize(k)] = bj.getInt(k) }
+                            val base = take(roomQ, sj.getString("room")) as Room
+                            restored.add(PlacedRoom.restored(base, sj.getInt("level"), bait))
+                        }
+                    }
+                    dungeon.restoreSlots(restored)
+                    p.dungeon = dungeon
+                } else {
+                    p.dungeon = null
+                }
+            }
+
+            val decks = root.getJSONObject("decks")
+            restoreDeck(game.bossDeck, decks.getJSONObject("boss"), bossQ)
+            restoreDeck(game.roomDeck, decks.getJSONObject("room"), roomQ)
+            restoreDeck(game.abilityDeck, decks.getJSONObject("ability"), abilQ)
+            val hero = decks.getJSONObject("hero")
+            game.heroDeck.restore(restoreHeroes(hero.getJSONArray("draw"), heroQ), restoreHeroes(hero.getJSONArray("discard"), heroQ))
+
+            game.town.clear()
+            val townJson = root.getJSONArray("town")
+            for (t in 0 until townJson.length()) {
+                val tj = townJson.getJSONObject(t)
+                val heroes = restoreHeroes(tj.getJSONArray("members"), heroQ)
+                game.town.add(Party(heroes, if (tj.isNull("name")) null else tj.getString("name")))
+            }
+
+            game.bossCandidates.clear()
+            val cand = root.getJSONObject("bossCandidates")
+            cand.keys().forEach { pn ->
+                val pl = game.players.first { it.name == pn }
+                game.bossCandidates[pl] = idList(cand.getJSONArray(pn)).map { take(bossQ, it) }
+            }
+
+            game.decisions.clear()
+            val decJson = root.getJSONArray("decisions")
+            for (d in 0 until decJson.length()) {
+                val dj = decJson.getJSONObject(d)
+                val kind = DecisionKind.valueOf(dj.getString("kind"))
+                val pl = game.players.first { it.name == dj.getString("player") }
+                val options: List<Card> = when (kind) {
+                    DecisionKind.CHOOSE_BOSS -> game.bossCandidates[pl] ?: emptyList()
+                    else -> pl.roomHand.toList()
+                }
+                game.decisions.add(Decision(kind, pl, options, dj.getBoolean("skip")))
+            }
+
+            root.optString("winner").takeIf { it.isNotEmpty() }?.let { wn -> game.winner = game.players.firstOrNull { it.name == wn } }
+            root.optString("endedBy").takeIf { it.isNotEmpty() }?.let { en -> game.endedBy = game.players.firstOrNull { it.name == en } }
+
+            return game
+        }
+
+        private fun <T> queueById(items: List<T>, id: (T) -> String): MutableMap<String, ArrayDeque<T>> {
+            val map = HashMap<String, ArrayDeque<T>>()
+            items.forEach { map.getOrPut(id(it)) { ArrayDeque() }.addLast(it) }
+            return map
+        }
+
+        private fun <T> take(queue: MutableMap<String, ArrayDeque<T>>, id: String): T =
+            queue[id]?.removeFirstOrNull() ?: throw IllegalStateException("save references a missing card: $id")
+
+        private fun idList(arr: JSONArray): List<String> = (0 until arr.length()).map { arr.getString(it) }
+
+        private fun restoreHeroes(arr: JSONArray, queue: MutableMap<String, ArrayDeque<Hero>>): List<Hero> =
+            (0 until arr.length()).map {
+                val hj = arr.getJSONObject(it)
+                take(queue, hj.getString("id")).also { h -> h.level = hj.getInt("level") }
+            }
+
+        private fun <T> restoreDeck(deck: Deck<T>, json: JSONObject, queue: MutableMap<String, ArrayDeque<T>>) {
+            fun ids(a: JSONArray) = (0 until a.length()).map { take(queue, a.getString(it)) }
+            deck.restore(ids(json.getJSONArray("draw")), ids(json.getJSONArray("discard")))
+        }
     }
 }

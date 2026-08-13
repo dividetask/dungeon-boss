@@ -99,6 +99,18 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
     var detailCard by remember { mutableStateOf<Any?>(null) }
     // Whether the full all-players standings dialog is open.
     var showStandings by remember { mutableStateOf(false) }
+    // When non-null, the player whose dungeon the user is peeking at (picked from
+    // Standings). It overrides the auto-viewed dungeon and swaps the bottom bar
+    // for a single Return button until the user returns to the live view.
+    var viewingOther by remember { mutableStateOf<String?>(null) }
+    // True right after the crawl phase opens, before the player presses Continue:
+    // the board stays on your just-built dungeon so it doesn't jump straight to
+    // another player's dungeon.
+    var awaitingCrawlStart by remember { mutableStateOf(false) }
+    // True while a finished crawl is being reviewed: the board holds on the
+    // crawled dungeon showing where each hero died (and the HP bars), and the bar
+    // shows Continue. Pressing it advances to the next party's pre-crawl.
+    var reviewingResult by remember { mutableStateOf(false) }
     // Number of players for the next new game (the New game button lives at the
     // bottom-right; the ☰ menu keeps the count selector).
     var playerCount by remember { mutableStateOf(2) }
@@ -126,6 +138,7 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
         val g = vm.game ?: return@LaunchedEffect
         val outcome = g.lastOutcomes.firstOrNull() ?: return@LaunchedEffect
 
+        reviewingResult = true
         activeIndex.value = null
         heroHp.clear(); deadSet.clear()
         val participants = outcome.result.participants
@@ -141,16 +154,19 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
             delay(700)
         }
         activeIndex.value = null
-        delay(500)
-        // Move to the next party's target dungeon (so the Send button and the
-        // board agree), or back to your own when the turn is done.
-        viewed.value = vm.game?.nextCrawl()?.first?.name ?: humanName
+        // Hold on the crawled dungeon (result + death markers) until the player
+        // presses Continue; onBeginCrawl-style advance happens there, not here.
     }
 
-    // When the crawl phase opens, show the first party's target dungeon.
+    // When the crawl phase opens, pause on your own (just-built) dungeon and wait
+    // for Continue rather than jumping straight to the first crawl target.
     LaunchedEffect(game?.crawling()) {
         if (game?.crawling() == true) {
-            game.nextCrawl()?.first?.name?.let { viewed.value = it }
+            awaitingCrawlStart = true
+            reviewingResult = false      // fresh crawl phase; nothing resolved yet
+            viewed.value = humanName
+        } else {
+            awaitingCrawlStart = false
         }
     }
 
@@ -194,22 +210,34 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                 }
 
                 if (game == null) {
+                    // Resume only works for a game still in progress; a finished (or
+                    // absent) save leaves it greyed out and disabled.
+                    val canResume = vm.savedGameInProgress()
+                    Button(
+                        onClick = { vm.restoreIfSaved() },
+                        enabled = canResume,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Palette.Accent,
+                            disabledContainerColor = Color(0xFFE6E6E6),
+                            disabledContentColor = Palette.SubText
+                        )
+                    ) {
+                        Text("Resume game", color = if (canResume) Color.White else Palette.SubText)
+                    }
                     Button(
                         onClick = { vm.newGame(playerCount) },
                         colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
                     ) {
                         Text("New game", color = Color.White)
                     }
-                    Text(
-                        "You are Player 1; the others are computers. Set the player count in the ☰ menu.",
-                        color = Palette.SubText, fontSize = 13.sp
-                    )
                 } else {
                     GameBody(
                         tick = tick,
                         game = game,
                         humanName = humanName,
-                        viewed = viewed.value,
+                        // A peeked dungeon (from Standings) overrides the auto-viewed
+                        // one; guard against a stale name after a new game.
+                        viewed = viewingOther?.takeIf { n -> game.players.any { it.name == n } } ?: viewed.value,
                         decision = decision,
                         selection = selection,
                         onSelect = { sel -> selection = if (selection?.cardId == sel.cardId) null else sel },
@@ -248,7 +276,8 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                         onShowDetail = { card -> detailCard = card },
                         activeIndex = activeIndex.value,
                         heroHp = heroHp,
-                        deadSet = deadSet
+                        deadSet = deadSet,
+                        reviewingResult = reviewingResult
                     )
                 }
             }
@@ -261,6 +290,18 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
                 key(tick) {
                     AdvanceBar(
                         tick = tick, game = game, humanName = humanName,
+                        viewingOther = viewingOther != null,
+                        onReturn = { viewingOther = null },
+                        awaitingCrawlStart = awaitingCrawlStart,
+                        onBeginCrawl = {
+                            awaitingCrawlStart = false
+                            game.nextCrawl()?.first?.name?.let { viewed.value = it }
+                        },
+                        reviewingResult = reviewingResult,
+                        onFinishReview = {
+                            reviewingResult = false
+                            viewed.value = game.nextCrawl()?.first?.name ?: humanName
+                        },
                         onDecide = { c, t -> vm.decide(c, t) },
                         onNextTurn = { vm.nextTurn() },
                         onSend = { vm.sendNextParty() },
@@ -285,7 +326,7 @@ fun GameScreen(vm: GameViewModel = viewModel()) {
         if (showStandings && game != null) {
             StandingsDialog(
                 game = game,
-                onView = { name -> viewed.value = name; showStandings = false },
+                onView = { name -> viewingOther = name; showStandings = false },
                 onDismiss = { showStandings = false }
             )
         }
@@ -397,6 +438,7 @@ internal fun GameBody(
     activeIndex: Int?,
     heroHp: Map<Int, Int>,
     deadSet: List<Int>,
+    reviewingResult: Boolean = false,
     // Tutorial-only highlight hooks; the live game leaves these off.
     baitHighlight: Set<Bait> = emptySet(),
     baitGlow: Float = 1f,
@@ -557,9 +599,21 @@ internal fun GameBody(
         } else emptySet()
 
     // No board title — whose dungeon it is shows as (P1)/(P2) on the boss card.
-    // The party in the pre-crawl window enters this dungeon; preview its fate.
-    val incoming = if (preCrawl && crawlOwner == viewedPlayer) crawl?.second else null
-    val prediction = if (incoming != null) game.predictCurrentCrawl() else null
+    // While reviewing a finished crawl, the board shows THAT crawl's result: its
+    // death markers (which hero died in which room) and no next-party preview.
+    val reviewingHere = reviewingResult && isCrawledHere && outcome != null
+    // The party in the pre-crawl window enters this dungeon; preview its fate —
+    // but not while a finished crawl is being reviewed on the same dungeon.
+    val incoming = if (preCrawl && crawlOwner == viewedPlayer && !reviewingResult) crawl?.second else null
+    val prediction = when {
+        reviewingHere -> outcome!!.result       // show where the crawlers just died
+        incoming != null -> game.predictCurrentCrawl()
+        else -> null
+    }
+    // Crawl-progress row (between the hand row and the dungeon): each party this
+    // turn as a compact coloured box — grey = done, green = about to crawl,
+    // blue = still waiting. Empty outside the Crawl phase.
+    key(tick) { CrawlPartyRow(game, reviewingResult, onShowDetail) }
     key(tick) {
         DungeonBoard(
             tick = tick,
@@ -582,14 +636,17 @@ internal fun GameBody(
         )
     }
 
-    if (isCrawledHere && outcome != null) {
-        Spacer(Modifier.height(2.dp))
+    if (reviewingHere) {
+        // The just-crawled party's hero HP bars, directly beneath the dungeon
+        // (only while its result is being reviewed, so a later pre-crawl on the
+        // same dungeon doesn't keep showing them).
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            outcome.result.participants.forEachIndexed { i, hero ->
-                HeroChip(hero.name, heroHp[i] ?: hero.maxHp, hero.maxHp, deadSet.contains(i))
+            outcome!!.result.participants.forEachIndexed { i, hero ->
+                val dead = deadSet.contains(i)
+                HeroChip(hero.name, heroHp[i] ?: hero.maxHp, hero.maxHp, dead, fled = outcome.retreated && !dead)
             }
         }
     }
@@ -638,11 +695,23 @@ private fun CrawlBreakdownDialog(outcomes: List<GauntletPhase.Outcome>, onDismis
 private fun CrawlBreakdownBlock(outcome: GauntletPhase.Outcome) {
     val result = outcome.result
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(
-            "⚔ ${outcome.party.displayName()} → ${outcome.player.name}'s dungeon" +
-                if (outcome.retreated) " ↩ retreated" else "",
-            fontWeight = FontWeight.Bold, fontSize = 13.sp
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                "⚔ ${outcome.party.displayName()} → ${outcome.player.name}'s dungeon",
+                fontWeight = FontWeight.Bold, fontSize = 13.sp
+            )
+            if (outcome.retreated) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Palette.FledBg)
+                        .border(1.dp, Palette.FledBorder, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                ) {
+                    Text("↩ FLED", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Palette.FledText)
+                }
+            }
+        }
         Row(Modifier.fillMaxWidth()) {
             Text("Encounter", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Palette.TypeText, modifier = Modifier.weight(2f))
             Text("Hero", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Palette.TypeText, modifier = Modifier.weight(1.4f))
@@ -672,10 +741,12 @@ private fun CrawlBreakdownBlock(outcome: GauntletPhase.Outcome) {
         }
         val deaths = result.deaths
         val wounded = !outcome.retreated && result.survivors.isNotEmpty()
-        val survivors = if (result.survivors.isEmpty()) "none" else result.survivors.joinToString(", ") { it.name }
+        val leaverLabel = if (outcome.retreated) "Fled" else "Survivors"
+        val leavers = if (result.survivors.isEmpty()) "none" else result.survivors.joinToString(", ") { it.name }
         Text(
             "→ ${outcome.player.name} gains $deaths point${if (deaths == 1) "" else "s"}" +
-                (if (wounded) ", 1 wound" else "") + ". Survivors: $survivors.",
+                (if (wounded) ", 1 wound" else if (outcome.retreated) ", no wound" else "") +
+                ". $leaverLabel: $leavers.",
             fontSize = 11.sp, color = Palette.SubText
         )
     }
@@ -807,6 +878,7 @@ private fun TownHeroChip(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(CardArt.heroArt(hero.id), fontSize = 16.sp)
             Text(hero.name + if (count > 1) " ×$count" else "", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            LevelBadge(hero.level)
         }
         TargetLine(lure, Palette.SubText, timidGlow)
     }
@@ -920,52 +992,31 @@ private fun PlayerStat(
 /** The full all-players standings (best first); tap a player to view its dungeon. */
 @Composable
 private fun StandingsDialog(game: Game, onView: (String) -> Unit, onDismiss: () -> Unit) {
-    // Bound the dialog to most of the screen so the rows scroll instead of being
-    // clipped — in landscape four players are taller than the (short) window.
-    val maxH = (LocalConfiguration.current.screenHeightDp * 0.85f).dp
+    val standings = game.standings()
+    // Three or four players: two columns so nothing has to scroll. Two players
+    // stay in a single narrow column.
+    val twoCol = game.players.size >= 3
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(12.dp), color = Color.White) {
             Column(
-                Modifier.widthIn(min = 260.dp, max = 340.dp).heightIn(max = maxH).padding(16.dp),
+                Modifier.widthIn(min = 260.dp, max = if (twoCol) 660.dp else 340.dp).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text("Standings", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Column(
-                    Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                game.standings().forEach { s ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (s.eliminated) Color(0xFFF1F1F1) else Palette.HighlightFill)
-                            .clickable { onView(s.player.name); onDismiss() }
-                            .padding(8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(s.player.dungeon?.boss?.name ?: s.player.name,
-                                fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            Text(
-                                (if (game.automated(s.player)) "computer" else "you") +
-                                    (if (s.eliminated) " · eliminated" else ""),
-                                fontSize = 11.sp, color = Palette.SubText
-                            )
-                            // Bait totals for this player's dungeon.
-                            Text(
-                                Bait.entries.joinToString("  ") { "${CardArt.baitEmoji[it]}${baitTotal(s.player, it)}" },
-                                fontSize = 12.sp
-                            )
+                if (twoCol) {
+                    val half = (standings.size + 1) / 2   // rank order fills the left column first
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            standings.take(half).forEach { StandingCard(game, it, onView, onDismiss) }
                         }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("🪙 ${s.player.points} · 🩸 ${s.player.wounds}", fontSize = 12.sp)
-                            Text("score ${s.score} · ⚔ ${playerDamage(game, s.player)}",
-                                fontSize = 11.sp, color = Palette.SubText)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            standings.drop(half).forEach { StandingCard(game, it, onView, onDismiss) }
                         }
                     }
-                }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        standings.forEach { StandingCard(game, it, onView, onDismiss) }
+                    }
                 }
                 Text("Tap a player to view their dungeon.", fontSize = 11.sp, color = Palette.SubText)
                 Button(
@@ -976,6 +1027,51 @@ private fun StandingsDialog(game: Game, onView: (String) -> Unit, onDismiss: () 
                     Text("Close", color = Color.White)
                 }
             }
+        }
+    }
+}
+
+/**
+ * One player's standings card: the boss icon + name + the boss's own damage on
+ * the top line, then role/elimination, bait totals, and points/wounds/score.
+ * Tapping it views that player's dungeon.
+ */
+@Composable
+private fun StandingCard(
+    game: Game,
+    s: Scoreboard.Standing,
+    onView: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val boss = s.player.dungeon?.boss
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (s.eliminated) Color(0xFFF1F1F1) else Palette.HighlightFill)
+            .clickable { onView(s.player.name); onDismiss() }
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(if (boss != null) CardArt.bossArt(boss.id) else "🏰", fontSize = 15.sp)
+            Text(boss?.name ?: s.player.name, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                modifier = Modifier.weight(1f), maxLines = 1)
+            if (boss != null) {
+                Text("⚔${boss.damage}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Palette.Damage)
+            }
+        }
+        Text(
+            (if (game.automated(s.player)) "computer" else "you") + (if (s.eliminated) " · eliminated" else ""),
+            fontSize = 11.sp, color = Palette.SubText
+        )
+        Text(
+            Bait.entries.joinToString("  ") { "${CardArt.baitEmoji[it]}${baitTotal(s.player, it)}" },
+            fontSize = 12.sp
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("🪙 ${s.player.points} · 🩸 ${s.player.wounds}", fontSize = 12.sp)
+            Text("score ${s.score} · ⚔ ${playerDamage(game, s.player)}", fontSize = 11.sp, color = Palette.SubText)
         }
     }
 }
@@ -1010,7 +1106,7 @@ internal fun DungeonBoard(
         // Heroes enter from the left, so the party about to crawl sits to the left
         // of the entrance, fixed; the dungeon scrolls within the remaining width so
         // the boss is always reachable.
-        if (dungeon != null && incoming != null) IncomingParty(incoming)
+        if (dungeon != null && incoming != null) IncomingParty(incoming, onShowDetail)
         Row(
             Modifier.weight(1f).horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1067,6 +1163,7 @@ internal fun DungeonBoard(
                                 }
                             }
                             DeathMarkers(prediction, ei)
+                            FledMarkers(prediction, mods?.retreatIndex(), ei)
                         }
                     }
                 }
@@ -1080,7 +1177,7 @@ internal fun DungeonBoard(
                         onInfo = { onShowDetail(dungeon.boss) },
                         baitHighlight = baitHighlight, baitGlow = baitGlow)
                     DeathMarkers(prediction, bossIndex)
-                    SurvivorMarkers(prediction)
+                    SurvivorMarkers(prediction, retreated = mods?.retreating() == true)
                 }
             }
         }
@@ -1089,11 +1186,11 @@ internal fun DungeonBoard(
 
 /**
  * The party about to crawl, shown to the left of the dungeon (heroes enter from
- * the left). No stats — just each hero class with ×count. Where each dies is
+ * the left). Each hero chip is tappable to open its stats. Where each dies is
  * shown by a red marker in the room itself (see [DeathMarkers]).
  */
 @Composable
-private fun IncomingParty(party: Party) {
+private fun IncomingParty(party: Party, onShowDetail: (Any) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(3.dp), horizontalAlignment = Alignment.Start) {
         Text("entering →", fontSize = 9.sp, color = Palette.SubText, fontWeight = FontWeight.Bold)
         party.heroes.groupBy { it.id }.values.forEach { group ->
@@ -1103,6 +1200,7 @@ private fun IncomingParty(party: Party) {
                     .clip(RoundedCornerShape(8.dp))
                     .background(Palette.HeroBg)
                     .border(1.dp, Palette.HeroBorder, RoundedCornerShape(8.dp))
+                    .clickable { onShowDetail(hero) } // tap to see this hero's stats
                     .padding(horizontal = 6.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1110,30 +1208,177 @@ private fun IncomingParty(party: Party) {
                 Text(CardArt.heroArt(hero.id), fontSize = 15.sp)
                 Text(hero.name + if (group.size > 1) " ×${group.size}" else "",
                     fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                LevelBadge(hero.level)
             }
         }
     }
 }
 
-/** A red 💀×N marker under an encounter showing how many heroes die there. */
+/** Colour scheme for a party box in the crawl-progress row, by its crawl state. */
+private enum class CrawlPartyState(val bg: Color, val border: Color) {
+    WENT(Color(0xFFECECEC), Color(0xFFB8B8B8)),     // already dealt with (grey)
+    NOW(Color(0xFFDDF4E0), Color(0xFF3FA34D)),      // about to crawl (green)
+    WAITING(Color(0xFFE1EEFB), Color(0xFF4C8FD6))   // still waiting (blue)
+}
+
+/** A crawled hero's fate marker for the progress row: died / fled / survived. */
+private fun heroFate(outcome: GauntletPhase.Outcome, hero: Hero): String = when {
+    outcome.result.deadHeroes.any { it === hero } -> "💀"
+    outcome.retreated -> "↩"   // any member that lived through a retreat fled
+    else -> "✓"
+}
+
+/** Height reserved for the crawl-progress row so the dungeon never shifts up. */
+private val CrawlRowHeight = 26.dp
+
+/**
+ * The crawl-progress row: every party this turn as a compact box, in town order,
+ * coloured by state (grey done / green about-to-go / blue waiting). It stays up
+ * from the moment the crawl phase opens through the READY that follows it (so the
+ * heroes that just crawled remain visible), and clears when the next turn begins.
+ * "Party i of N" is pinned on the left; the boxes scroll horizontally. When the
+ * turn has no parties it holds its height empty so the dungeon keeps its place.
+ */
 @Composable
-private fun DeathMarkers(prediction: PartyCrawlResolver.Result?, encounterIndex: Int) {
-    val count = prediction?.log?.count { it.died && it.roomIndex == encounterIndex } ?: 0
-    if (count == 0) return
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(Palette.DyingBg)
-            .border(1.dp, Palette.Damage, RoundedCornerShape(6.dp))
-            .padding(horizontal = 4.dp, vertical = 1.dp)
+private fun CrawlPartyRow(game: Game, reviewingResult: Boolean, onShowDetail: (Any) -> Unit) {
+    // The engine's about-to-crawl party (used to keep it in the list).
+    val engineCurrent = if (game.crawling()) game.nextCrawl()?.second else null
+    // Only parties that take part in the crawl: those that already crawled, the
+    // one about to, and (mid-crawl) those still enticed into a dungeon. Parties
+    // that stay in town are shown in the town strip, not here.
+    val parties = game.crawlOrder().filter { p ->
+        game.crawlOutcomeFor(p) != null ||
+            p === engineCurrent ||
+            (game.crawling() && EnticePhase.targetFor(game, p) != null)
+    }
+    if (parties.isEmpty()) {
+        Spacer(Modifier.height(CrawlRowHeight))   // reserve space between phases
+        return
+    }
+    // The green box is whatever is on screen now: the party being reviewed, else
+    // the one about to crawl. None once every crawl is resolved (all read grey).
+    val focus = if (reviewingResult) game.lastOutcomes.firstOrNull()?.party else engineCurrent
+    val focusIdx = focus?.let { f -> parties.indexOfFirst { it === f } } ?: parties.size
+    val label = if (focusIdx in parties.indices) "Party ${focusIdx + 1} of ${parties.size}"
+                else "${parties.size} ${if (parties.size == 1) "party" else "parties"} this turn"
+
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = CrawlRowHeight),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Text("💀" + if (count > 1) " ×$count" else "", fontSize = 12.sp, color = Palette.Damage)
+        // Pinned position label — always visible, outside the scrolling region.
+        Text(
+            label,
+            fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Palette.SubText, maxLines = 1
+        )
+        Row(
+            Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            parties.forEachIndexed { i, party ->
+                val state = when {
+                    i == focusIdx -> CrawlPartyState.NOW
+                    i < focusIdx -> CrawlPartyState.WENT
+                    else -> CrawlPartyState.WAITING
+                }
+                CrawlPartyChip(game, party, isCurrent = party === focus, state = state, onShowDetail = onShowDetail)
+            }
+        }
     }
 }
 
-/** Green markers under the boss for the heroes who survive the whole crawl. */
+/**
+ * One party in the crawl-progress row: its members (grouped by class + level)
+ * with the boss icon of the dungeon it is headed into. Once the party has
+ * crawled, each member also carries its fate — 💀 died, ↩ fled, ✓ survived —
+ * and members are grouped by class + level + fate so mixed outcomes stay clear.
+ */
 @Composable
-private fun SurvivorMarkers(prediction: PartyCrawlResolver.Result?) {
+private fun CrawlPartyChip(
+    game: Game,
+    party: Party,
+    isCurrent: Boolean,
+    state: CrawlPartyState,
+    onShowDetail: (Any) -> Unit
+) {
+    val outcome = game.crawlOutcomeFor(party)
+    // Boss icon = the dungeon this party actually entered (once resolved), else
+    // the one it is about to enter, else its strongest lure.
+    val target = when {
+        outcome != null -> outcome.player
+        isCurrent -> game.nextCrawl()?.first
+        else -> EnticePhase.mostEnticingPlayer(game, party)
+    }
+    val bossId = target?.dungeon?.boss?.id
+    // After a crawl the party loses its dead members, so read the full roster and
+    // each member's fate from the retained outcome instead of party.heroes.
+    val roster = outcome?.result?.participants ?: party.heroes
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(7.dp))
+            .background(state.bg)
+            .border(1.5.dp, state.border, RoundedCornerShape(7.dp))
+            .padding(horizontal = 5.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        // Group identical members: by class + level, plus fate once they've gone.
+        roster.groupBy { Triple(it.id, it.level, outcome?.let { o -> heroFate(o, it) }) }.values.forEach { grp ->
+            val hero = grp.first()
+            val fate = outcome?.let { heroFate(it, hero) }
+            Row(
+                Modifier.clickable { onShowDetail(hero) },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                Text(CardArt.heroArt(hero.id), fontSize = 13.sp)
+                LevelBadge(hero.level)
+                if (grp.size > 1) Text("×${grp.size}", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                if (fate != null) Text(fate, fontSize = 11.sp)
+            }
+        }
+        if (bossId != null) Text(CardArt.bossArt(bossId), fontSize = 13.sp)
+    }
+}
+
+/**
+ * Under an encounter: WHICH hero(es) die there — each dying hero's class icon
+ * with a 💀 (×N if several of the same class fall in that room). Reads the
+ * per-step log so the marker names the victim, not just a count.
+ */
+@Composable
+private fun DeathMarkers(prediction: PartyCrawlResolver.Result?, encounterIndex: Int) {
+    val dyers = prediction?.log?.filter { it.died && it.roomIndex == encounterIndex }?.map { it.hero } ?: emptyList()
+    if (dyers.isEmpty()) return
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        dyers.groupBy { it.id }.values.forEach { group ->
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Palette.DyingBg)
+                    .border(1.dp, Palette.Damage, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            ) {
+                Text(
+                    "${CardArt.heroArt(group.first().id)}💀" + if (group.size > 1) "×${group.size}" else "",
+                    fontSize = 12.sp, color = Palette.Damage
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Under the boss: only heroes who make it through the WHOLE crawl alive (green
+ * ✓ — the owner takes a wound). Fleeing via a Retreat turns the party back
+ * *before* the boss, so those heroes never reach it — they're shown at the
+ * retreat room by [FledMarkers], not here.
+ */
+@Composable
+private fun SurvivorMarkers(prediction: PartyCrawlResolver.Result?, retreated: Boolean = false) {
+    if (retreated) return // the party turned back before the boss; nobody reaches it
     val survivors = prediction?.survivors ?: emptyList()
     if (survivors.isEmpty()) return
     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -1147,6 +1392,32 @@ private fun SurvivorMarkers(prediction: PartyCrawlResolver.Result?) {
             ) {
                 Text("✓${CardArt.heroArt(group.first().id)}" + if (group.size > 1) "×${group.size}" else "",
                     fontSize = 12.sp, color = Palette.PartyHead)
+            }
+        }
+    }
+}
+
+/**
+ * Under the retreat room: the heroes who turn back here (amber ↩). A Retreat skips
+ * this room and everything after (the boss included), so the escapees are shown
+ * at the point they fled, not at a boss they never reached.
+ */
+@Composable
+private fun FledMarkers(prediction: PartyCrawlResolver.Result?, retreatIndex: Int?, encounterIndex: Int) {
+    if (retreatIndex == null || encounterIndex != retreatIndex) return
+    val fled = prediction?.survivors ?: emptyList()
+    if (fled.isEmpty()) return
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        fled.groupBy { it.id }.values.forEach { group ->
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Palette.FledBg)
+                    .border(1.dp, Palette.FledBorder, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 3.dp, vertical = 1.dp)
+            ) {
+                Text("↩${CardArt.heroArt(group.first().id)}" + if (group.size > 1) "×${group.size}" else "",
+                    fontSize = 12.sp, color = Palette.FledText)
             }
         }
     }
@@ -1181,6 +1452,12 @@ private fun AdvanceBar(
     @Suppress("UNUSED_PARAMETER") tick: Int,
     game: Game,
     humanName: String,
+    viewingOther: Boolean = false,
+    onReturn: () -> Unit = {},
+    awaitingCrawlStart: Boolean = false,
+    onBeginCrawl: () -> Unit = {},
+    reviewingResult: Boolean = false,
+    onFinishReview: () -> Unit = {},
     onDecide: (String?, Any?) -> Unit,
     onNextTurn: () -> Unit,
     onSend: () -> Unit,
@@ -1195,6 +1472,25 @@ private fun AdvanceBar(
     pendingBoostRoom: Int?,
     discardSelection: List<String> = emptyList()
 ) {
+    // While peeking at another player's dungeon (from Standings), the whole bar
+    // becomes a single Return button that snaps back to the live view.
+    if (viewingOther) {
+        Surface(shadowElevation = 8.dp, color = Color.White) {
+            Box(
+                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Button(
+                    onClick = onReturn,
+                    colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent)
+                ) {
+                    Text("Return", color = Color.White, fontSize = 15.sp)
+                }
+            }
+        }
+        return
+    }
+
     val decision = game.currentDecision()
     val human = game.players.first { it.name == humanName }
     val mineKind = decision?.takeIf { it.player == human }?.kind
@@ -1216,7 +1512,11 @@ private fun AdvanceBar(
             Triple(label, true, { onDecide(discardSelection.joinToString(",").ifEmpty { null }, null) })
         }
         mineKind == DecisionKind.BUILD_ROOM -> Triple("Build nothing", true, { onDecide(null, null) })
+        // Reviewing a finished crawl (result + death markers); Continue → next party.
+        reviewingResult -> Triple("Continue ▶", true, onFinishReview)
         game.quiet() -> Triple("Continue ▶", true, onContinueQuiet)
+        // After building, pause on your dungeon; Continue begins the crawl.
+        awaitingCrawlStart && game.crawling() -> Triple("Continue ▶", true, onBeginCrawl)
         game.crawling() && game.nextCrawl() != null -> Triple("Send ▶", true, onSend)
         game.over() -> Triple("", false, noop)
         setupDone -> Triple("Start ▶", true, onNextTurn)
@@ -1251,7 +1551,10 @@ private fun AdvanceBar(
                 if (pendingAbility != null) {
                     OutlinedButton(onClick = onCancelAbility) { Text("Cancel", fontSize = 13.sp) }
                 }
-                if (game.crawling() && game.canUndoPlacement()) {
+                // canUndoPlacement() already gates on stage (CRAWLING or QUIET), so
+                // don't add a crawling-only check — that hid the button on a quiet
+                // round, where you can still take back the room you just placed.
+                if (game.canUndoPlacement()) {
                     OutlinedButton(onClick = onUndoPlacement) { Text("↶ Undo room", fontSize = 13.sp) }
                 }
                 if (game.canUndoAbility()) {
@@ -1335,8 +1638,8 @@ internal fun CardDetailDialog(card: Any, onDismiss: () -> Unit) {
                         DetailBody(card.text)
                     }
                     is Hero -> {
-                        DetailHeader(card.icon.ifEmpty { CardArt.heroArt(card.id) }, card.name,
-                            if (card.level > 0) "Hero · Lv ${card.level}" else "Hero")
+                        DetailHeader(card.icon.ifEmpty { CardArt.heroArt(card.id) }, card.name, "Hero")
+                        DetailStat("Level", card.level.toString())
                         DetailStat("HP", card.maxHp.toString())
                         DetailStat("Courage", card.courage.toString())
                         DetailStat("Preferred bait", CardArt.baitEmoji[card.preferredBait].orEmpty())
@@ -1425,6 +1728,13 @@ private fun describeRoom(e: Encounter): String {
         parts.add("Deals ${e.damageAll} damage$who.")
     }
     if (e.damageRear > 0) parts.add("Deals ${e.damageRear} damage to weakest first.")
+    // Call out only the fast growers — a +1-per-level room grows too slowly to be
+    // worth noting, so the note appears only when an increment exceeds 1.
+    val growInc = maxOf(e.leadIncrement, e.allIncrement, e.rearIncrement)
+    if (growInc > 1.0) {
+        val label = if (growInc % 1.0 == 0.0) growInc.toInt().toString() else growInc.toString()
+        parts.add("Increases by $label each level.")
+    }
     when (e.roomResist) {
         true -> parts.add("Cannot be reduced.")
         false -> parts.add("Cannot be halved.")

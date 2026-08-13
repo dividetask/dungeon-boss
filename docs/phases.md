@@ -135,7 +135,7 @@ consolidated in the Recharge phase.
 > discard-to-boost a room (effects last only that crawl):
 >
 > - **Play ability cards** — any player, on any dungeon's crawl, one-shot
->   (discarded after use): Reinforcements (+2 to a room), Expose Weakness (a room
+>   (discarded after use): Bolster (+2 to a room), Counter (a room
 >   becomes unreducible), Sabotage (a room deals 0), Retreat (**target a room**:
 >   the party turns back there — rooms before it still resolve and score, the
 >   rest and the boss are skipped, and the owner takes no wound), Blueprints (the
@@ -167,7 +167,7 @@ encounter in order:
 4. **Rear** — `damage_rear` hits the lowest-current-health (most injured) member,
    cascading upward (Black Tentacles).
 
-The boss's points bonus, **Trap Makers / Beast Tamer** `room_aura`s, and per-crawl
+The boss's points bonus, **Trap Maker's / Hobgoblin Beastmaster** `room_aura`s, and per-crawl
 modifiers fold into the room's primary channel. `room_resist` controls reduction:
 `null` normal, `false` cannot be halved (the Barbarian's self multiplier is
 skipped), `true` cannot be reduced at all. A hero damaged by a room with

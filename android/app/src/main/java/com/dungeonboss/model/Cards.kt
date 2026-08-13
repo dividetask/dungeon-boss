@@ -53,6 +53,10 @@ interface Encounter {
     /** null = normal, false = cannot be halved (Barbarian), true = cannot be reduced. */
     val roomResist: Boolean? get() = null
 
+    /** Mirror: this room's lead damage equals the toughest party member's max HP
+     *  (a lead hit on the highest-current-HP hero for the party's biggest max HP). */
+    val leadMaxPartyHp: Boolean get() = false
+
     /** Per discarded card during the crawl: +N to lead / all damage (temporary). */
     val discardLeadDamage: Int get() = 0
     val discardAllDamage: Int get() = 0
@@ -132,6 +136,7 @@ class Room(
     override val rearIncrement: Double = 0.0,
     override val damageFilter: String? = null,
     override val roomResist: Boolean? = null,
+    override val leadMaxPartyHp: Boolean = false,
     override val discardLeadDamage: Int = 0,
     override val discardAllDamage: Int = 0,
     override val poisonDamage: Int = 0,
@@ -149,11 +154,14 @@ class Room(
 /**
  * One hero card's data: the adventurers who crawl dungeons. Fully data-driven —
  * no per-id code. A hero carries a mutable [level] (its only mutable field): it
- * is set to floor(round / 4) when the hero arrives, gains +1 each time the hero
- * survives a crawl, and persists until the hero dies. Three stats derive from it:
- *   maxHp           = startingHp + floor(level * hpLevelIncrement)
- *   courage         = startingCourage + level
- *   partyReduction  = partyDamageReduction + floor(level * partyDamageReductionLevelIncrement)
+ * starts at floor(round / 4) + 1 when the hero arrives (so the minimum level is
+ * 1, never 0), gains +1 each time the hero survives a crawl, and persists until
+ * the hero dies. The three derived stats use (level - 1), so a level-1 hero has
+ * its base stats and each level beyond adds one increment:
+ *   maxHp           = startingHp + floor((level - 1) * hpLevelIncrement)
+ *   courage         = startingCourage + (level - 1)
+ *   partyReduction  = partyDamageReduction + floor((level - 1) * partyDamageReductionLevelIncrement)
+ * e.g. the Mage's reduction (base 4, +2/level) is 4 at L1, 6 at L2 = level*2 + 2.
  */
 class Hero(
     override val id: String,
@@ -173,18 +181,21 @@ class Hero(
     val tags: Set<String> = emptySet(),
     val abilityText: String = ""
 ) : Card {
-    /** The hero's current level (mutable; see the class doc). */
-    var level: Int = 0
+    /** The hero's current level (mutable; see the class doc). Minimum 1. */
+    var level: Int = 1
+
+    /** Levels above the level-1 base contribute the increments (level 1 -> 0). */
+    private val bonusLevels: Int get() = (level - 1).coerceAtLeast(0)
 
     /** Full (levelled) health: starting HP plus floored per-level growth. */
-    val maxHp: Int get() = startingHp + floor(level * hpLevelIncrement).toInt()
+    val maxHp: Int get() = startingHp + floor(bonusLevels * hpLevelIncrement).toInt()
 
     /** Combined into a party's courage; a per-class base that rises by 1 per level. */
-    val courage: Int get() = startingCourage + level
+    val courage: Int get() = startingCourage + bonusLevels
 
     /** The levelled flat party-wide damage reduction this hero contributes. */
     val partyReduction: Int
-        get() = partyDamageReduction + floor(level * partyDamageReductionLevelIncrement).toInt()
+        get() = partyDamageReduction + floor(bonusLevels * partyDamageReductionLevelIncrement).toInt()
 }
 
 /** One ability card's data: held in hand and played before a crawl to alter it. */
@@ -225,6 +236,7 @@ class PlacedRoom(val baseRoom: Room) : Encounter {
     override val rearIncrement get() = baseRoom.rearIncrement
     override val damageFilter get() = baseRoom.damageFilter
     override val roomResist get() = baseRoom.roomResist
+    override val leadMaxPartyHp get() = baseRoom.leadMaxPartyHp
     override val discardLeadDamage get() = baseRoom.discardLeadDamage
     override val discardAllDamage get() = baseRoom.discardAllDamage
     override val poisonDamage get() = baseRoom.poisonDamage
@@ -259,5 +271,18 @@ class PlacedRoom(val baseRoom: Room) : Encounter {
         copy.level = level
         copy.grantedBait.putAll(grantedBait)
         return copy
+    }
+
+    /** The bait icons granted by upgrades (for saving a game). */
+    fun grantedBaitMap(): Map<Bait, Int> = LinkedHashMap(grantedBait)
+
+    companion object {
+        /** Rebuild a placed room at a saved level with saved granted bait. */
+        fun restored(baseRoom: Room, level: Int, grantedBait: Map<Bait, Int>): PlacedRoom {
+            val room = PlacedRoom(baseRoom)
+            room.level = level
+            room.grantedBait.putAll(grantedBait)
+            return room
+        }
     }
 }

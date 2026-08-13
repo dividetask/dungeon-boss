@@ -82,6 +82,7 @@ class CardLibrary(
             rearIncrement = dblOf(c["damage_rear_increment"]),
             damageFilter = c["damage_filter"]?.toString()?.trim()?.lowercase()?.ifEmpty { null },
             roomResist = boolOrNull(c["room_resist"]),
+            leadMaxPartyHp = boolOf(c["lead_max_party_hp"]),
             discardLeadDamage = intOf(c["discard_lead_damage"]),
             discardAllDamage = intOf(c["discard_all_damage"]),
             poisonDamage = intOf(c["poison_damage"]),

@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dungeonboss.model.AbilityCard
@@ -35,7 +36,13 @@ import com.dungeonboss.model.PlacedRoom
 import com.dungeonboss.model.Room
 
 private val CARD_WIDTH = 116.dp
-private val CARD_HEIGHT = 76.dp
+// Board cards (boss / dungeon room) must still fit a two-line boss name plus its
+// damage + optional breakdown line, so they only shrink modestly.
+private val CARD_HEIGHT = 64.dp
+// Hand cards (rooms / abilities) carry a heading plus a damage + bait line. The
+// bait pips render as pills (taller than plain text), so the card needs enough
+// height to show them fully — a touch shorter than the board card, no more.
+private val HAND_CARD_HEIGHT = 58.dp
 private val CARD_SHAPE = RoundedCornerShape(10.dp)
 
 /**
@@ -48,12 +55,13 @@ fun CardFrame(
     border: Color,
     modifier: Modifier = Modifier,
     highlighted: Boolean = false,
+    height: Dp = CARD_HEIGHT,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(
         modifier
             .width(CARD_WIDTH)
-            .height(CARD_HEIGHT)
+            .height(height)
             .clip(CARD_SHAPE)
             .background(bg)
             .border(
@@ -61,7 +69,7 @@ fun CardFrame(
                 if (highlighted) Palette.Highlight else border,
                 CARD_SHAPE
             )
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            .padding(horizontal = 6.dp, vertical = 3.dp),
         verticalArrangement = Arrangement.spacedBy(1.dp),
         content = content
     )
@@ -72,7 +80,9 @@ fun CardFrame(
 private fun CardHeader(glyph: String, name: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(glyph, fontSize = 15.sp)
-        Text(name, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 2, modifier = Modifier.weight(1f))
+        // One line only — a wrapping name would push the bait/damage row out of
+        // the (short) card; overflow is simply clipped.
+        Text(name, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
     }
 }
 
@@ -85,10 +95,20 @@ private fun BaitWithMarkers(
     baitHighlight: Set<Bait> = emptySet(),
     baitGlow: Float = 1f
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-        BaitPips(bait, baitHighlight, baitGlow)
-        if (hasEffect) Text("✨", fontSize = 11.sp)
-        if (upgraded) Text("⬆️", fontSize = 11.sp)
+    // Cards accumulate icons (one pip per bait type, plus the ✨ effect and ⬆️
+    // upgrade markers). At 4+ they overflow the fixed-width card, so shrink the
+    // whole row — font, padding and spacing — once we reach that count. Three
+    // icons (e.g. two bait + ✨) still fit at full size.
+    val iconCount = bait.toMap().size + (if (hasEffect) 1 else 0) + (if (upgraded) 1 else 0)
+    val compact = iconCount >= 4
+    val markerFont = if (compact) 8.sp else 11.sp
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 3.dp)
+    ) {
+        BaitPips(bait, baitHighlight, baitGlow, compact = compact)
+        if (hasEffect) Text("✨", fontSize = markerFont)
+        if (upgraded) Text("⬆️", fontSize = markerFont)
     }
 }
 
@@ -155,30 +175,40 @@ private fun CardDesc(text: String) {
 /**
  * Bait pips. Any bait in [highlight] gets a glowing ring whose opacity tracks
  * [glow] (0..1) — used by the tutorial to draw attention to specific bait. The
- * live game leaves both at their defaults, so pips render unchanged.
+ * live game leaves both at their defaults, so pips render unchanged. [compact]
+ * shrinks each pip (font, padding, spacing) so a crowded 4+-icon card still fits.
  */
 @Composable
-fun BaitPips(icons: BaitIcons, highlight: Set<Bait> = emptySet(), glow: Float = 1f) {
+fun BaitPips(
+    icons: BaitIcons,
+    highlight: Set<Bait> = emptySet(),
+    glow: Float = 1f,
+    compact: Boolean = false
+) {
     val map = icons.toMap()
     if (map.isEmpty()) {
         Box(Modifier) // keep the row height stable when there is no bait
         return
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+    val font = if (compact) 8.sp else 11.sp
+    val corner = if (compact) 6.dp else 9.dp
+    val hPad = if (compact) 3.dp else 5.dp
+    val vPad = if (compact) 0.dp else 1.dp
+    Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 3.dp)) {
         map.forEach { (bait, count) ->
             val label = if (count > 1) "${CardArt.baitEmoji[bait]}×$count" else CardArt.baitEmoji[bait].orEmpty()
             val lit = bait in highlight
             Box(
                 Modifier
-                    .clip(RoundedCornerShape(9.dp))
+                    .clip(RoundedCornerShape(corner))
                     .background(CardArt.pipColor(bait))
                     .then(
-                        if (lit) Modifier.border(2.dp, Palette.Highlight.copy(alpha = glow), RoundedCornerShape(9.dp))
+                        if (lit) Modifier.border(2.dp, Palette.Highlight.copy(alpha = glow), RoundedCornerShape(corner))
                         else Modifier
                     )
-                    .padding(horizontal = 5.dp, vertical = 1.dp)
+                    .padding(horizontal = hPad, vertical = vPad)
             ) {
-                Text(label, fontSize = 11.sp)
+                Text(label, fontSize = font)
             }
         }
     }
@@ -277,7 +307,7 @@ fun HandCardView(
             is Room -> CardFrame(
                 if (card.advanced) Palette.AdvancedBg else Palette.CardBg,
                 if (card.advanced) Palette.AdvancedBorder else Palette.CardBorder,
-                modifier, highlighted
+                modifier, highlighted, height = HAND_CARD_HEIGHT
             ) {
                 CardHeader(CardArt.roomArt(card.type), card.name)
                 StatRow(
@@ -294,7 +324,10 @@ fun HeroCardView(hero: Hero, modifier: Modifier = Modifier) {
     CardFrame(Palette.HeroBg, Palette.HeroBorder, modifier) {
         CardArtGlyph(hero.icon.ifEmpty { CardArt.heroArt(hero.id) })
         CardTitle(hero.name)
-        CardType(if (hero.level > 0) "Hero · Lv ${hero.level}" else "Hero")
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            CardType("Hero")
+            LevelBadge(hero.level)
+        }
         StatRow(
             { Text("❤ ${hero.maxHp}", color = Palette.Health, fontWeight = FontWeight.Bold, fontSize = 13.sp) },
             {
@@ -324,9 +357,8 @@ fun AbilityCardView(
     onInfo: (() -> Unit)? = null
 ) {
     WithInfo(onInfo) {
-        CardFrame(Palette.AbilityBg, Palette.AbilityBorder, modifier, highlighted) {
+        CardFrame(Palette.AbilityBg, Palette.AbilityBorder, modifier, highlighted, height = HAND_CARD_HEIGHT) {
             CardHeader("✨", card.name)
-            CardType("Ability")
         }
     }
 }
@@ -372,19 +404,44 @@ fun EmptyRoomSlot(slot: Int, active: Boolean, modifier: Modifier = Modifier) {
     }
 }
 
-/** A walking-party hero chip shown under the dungeon during a crawl. */
+/**
+ * A walking-party hero chip shown under the dungeon during a crawl. A hero that
+ * [dead] is red with 💀; one that [fled] (survived only because the party
+ * retreated) is amber with ↩; one that survived the full crawl is the normal
+ * accent colour — so fleeing and surviving read differently.
+ */
 @Composable
-fun HeroChip(name: String, hp: Int, maxHp: Int, dead: Boolean) {
+fun HeroChip(name: String, hp: Int, maxHp: Int, dead: Boolean, fled: Boolean = false) {
+    val bg = when {
+        dead -> Palette.DeadChip
+        fled -> Palette.FledText // darker amber for white-text contrast
+        else -> Palette.Accent
+    }
     Box(
         Modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(if (dead) Palette.DeadChip else Palette.Accent)
+            .background(bg)
             .padding(horizontal = 7.dp, vertical = 4.dp)
     ) {
         Text(
-            text = "$name (HP $hp/$maxHp)" + if (dead) " 💀" else "",
+            text = "$name (HP $hp/$maxHp)" + when {
+                dead -> " 💀"
+                fled -> " ↩ fled"
+                else -> ""
+            },
             color = Color.White,
             fontSize = 12.sp
         )
     }
+}
+
+/**
+ * A small "L{n}" level label — plain blue text (no box), gold once a hero is a
+ * battle-hardened veteran (L4+) so higher levels still stand out. Heroes are
+ * level 1 at minimum.
+ */
+@Composable
+fun LevelBadge(level: Int) {
+    val color = if (level >= 4) Color(0xFFC79A2E) else Palette.Accent
+    Text("L$level", color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold)
 }

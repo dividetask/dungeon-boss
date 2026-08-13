@@ -44,8 +44,8 @@ the bait. The current classification tags:
 
 | Tag | On | Boss that keys off it |
 |-----|----|-----------------------|
-| `arcane` | the six arcane **trap** rooms (Fireball, Power Word, Soul Leach, Antimagic, Black Tentacles, Maze) | **Lich** (`type: trap` + `tag: arcane`) |
-| `undead` | the six undead **creatures** (Skeletons, Zombies, Shade, Zealots, Shadow, Wright) — also on the Undead Hands trap | **Necromancer** (`type: creature` + `tag: undead`) |
+| `arcane` | the six arcane **trap** rooms (Fireball, Power Word, Cursed Ring, Antimagic, Black Tentacles, Maze) | **Lich** (`type: trap` + `tag: arcane`) |
+| `undead` | the six undead **creatures** (Skeletons, Zombies, Shade, Zealots, Shadow, Wight) — also on the Undead Hands trap | **Necromancer** (`type: creature` + `tag: undead`) |
 | `monstrous_humanoid` | the humanoid glory creatures (Goblins, Hobgoblin Champion, Gladiator, Troll, Hobgoblin Beastmaster) | **Oni** (+4 flat) |
 | `goblin` / `hobgoblin` | Goblins / the two Hobgoblin rooms | **Goblin Chieftain** (+1/point) |
 
@@ -136,6 +136,7 @@ room's level: `value = base + floor(increment × level)`.
 | `damage_rear_increment`  | float         | ❌  | Extra rear damage per level                                   |
 | `damage_filter`          | string        | ❌  | `mage`/`cleric`/`rogue`/`barbarian` — gates `damage_all` to that class |
 | `room_resist`            | bool/null     | ❌  | `null` normal, `false` cannot be halved (Barbarian), `true` cannot be reduced |
+| `lead_max_party_hp`      | boolean       | ❌  | **Mirror**: this room's lead damage equals the **highest max HP** in the party (a lead hit for that much; pair with `room_resist: true` to make it unreducible) |
 | `discard_lead_damage`    | integer       | ❌  | Per card discarded during the crawl: +N lead damage (stacks; temporary) |
 | `discard_all_damage`     | integer       | ❌  | Same, but +N all-damage                                       |
 | `poison_damage`          | integer       | ❌  | Damage to every hero this room damaged, in a later room (unreducible) |
@@ -145,7 +146,15 @@ room's level: `value = base + floor(increment × level)`.
 | `draw_on_death`          | boolean       | ❌  | Owner draws one room + one ability card per hero that dies here |
 | `room_aura`              | map           | ❌  | `{ match: {...}, amount: N }` — +N to every other matching room |
 | `tags`                   | array<string> | ❌  | Classification tags                                          |
-| `advanced`/`copies`      | bool/int      | ❌  | `advanced` set from the `advanced_rooms` section; `copies` defaults to 1 |
+| `advanced`/`copies`      | bool/int      | ❌  | `advanced` set from the `advanced_rooms` section; `copies` is the maximum pool (enough for 4 players) and defaults to 1 |
+
+**Copies scale with player count.** An **N-player** game uses **N copies** of each
+basic room, with **ceil(N/2)** of those copies seeded into the build deck's
+**discard** pile (they enter play only after a reshuffle) and the rest in the
+draw pile — 2 players → 2 copies / 1 in discard, 3 → 3 / 2, 4 → 4 / 2. Advanced
+rooms scale the same way (N players → N copies each) but always start fully in
+the discard. This scaling is engine-handled, so the per-card `start_in_discard`
+field no longer exists.
 
 Poison is always unreducible. `room_resist` applies to the room's own damage
 channels (not poison). A room's **level** starts at 0 and rises by 1 when
@@ -164,8 +173,8 @@ hero added) by editing data alone.
 | `name`           | string        | Display name                                                  |
 | `icon`           | string        | Display icon (emoji or asset key)                            |
 | `preferred_bait` | bait          | One of the four bait types — the hero's lure ("Bait")        |
-| `starting_hp`    | integer > 0   | Health at level 0                                            |
-| `starting_courage` | integer ≥ 1 | Courage at level 0 (per-class base; default 1)             |
+| `starting_hp`    | integer > 0   | Health at level 1 (the base)                                 |
+| `starting_courage` | integer ≥ 1 | Courage at level 1 (per-class base; default 1)             |
 | `hp_level_increment` | float     | HP gained per level (floored — see formula); may be < 1      |
 | `self_damage_multiplier` | float | Multiplies the damage **this hero** personally takes (self-scope) |
 | `party_damage_reduction` | integer ≥ 0 | Flat party-wide damage reduction at level 0 (the aura)   |
@@ -178,22 +187,26 @@ hero added) by editing data alone.
 
 #### Levelling and derived stats
 
-A hero carries a **level** that starts at `floor(round / 4)` when it arrives,
-gains **+1 every time it survives a crawl**, and persists until the hero dies
-(each hero tracks its own level). From the level, three stats are derived:
+A hero carries a **level** that starts at `floor(round / 4) + 1` when it arrives
+— so the **minimum level is 1, never 0** — gains **+1 every time it survives a
+crawl**, and persists until the hero dies (each hero tracks its own level). The
+three derived stats use **`(level - 1)`**, so a **level-1 hero has its base
+stats** and each level beyond adds one increment:
 
 ```
-max_hp           = starting_hp + floor(level * hp_level_increment)
-courage          = starting_courage + level           # per-class base, +1 per level
-party_reduction  = party_damage_reduction + floor(level * party_damage_reduction_level_increment)
+max_hp           = starting_hp + floor((level - 1) * hp_level_increment)
+courage          = starting_courage + (level - 1)      # base at L1, +1 per level after
+party_reduction  = party_damage_reduction + floor((level - 1) * party_damage_reduction_level_increment)
 ```
 
-Because `hp_level_increment` is a float that is **floored after multiplying by
-level**, classes with a small increment (e.g. the Mage's `0.05`) gain HP only
-occasionally, while a Barbarian (`2`) gains HP every level. HP itself is always
-an **integer**; only the increments are floats. **Courage** starts at the
-per-class `starting_courage` and rises by **1 every level**. Heroes are restored
-to their current (levelled) **full HP between crawls**.
+So e.g. the Mage's party reduction (base `4`, `+2`/level) is `4` at L1, `6` at
+L2, `8` at L3 — i.e. `level * 2 + 2`. Because `hp_level_increment` is a float
+**floored after multiplying by `(level - 1)`**, classes with a small increment
+(e.g. the Mage's `0.05`) gain HP only occasionally, while a Barbarian (`2`) gains
+HP every level. HP itself is always an **integer**; only the increments are
+floats. **Courage** is the per-class `starting_courage` at L1 and rises by **1
+every level** after. Heroes are restored to their current (levelled) **full HP
+between crawls**.
 
 #### How the damage fields combine
 
@@ -256,13 +269,20 @@ are loaded with `advanced: true`) and start the game seeded into the **discard
 pile**, so they cannot appear in an opening hand — they enter circulation only
 after the first reshuffle.
 
-The twelve advanced rooms (×2 each): **Antimagic Room** (`damage_all` 4, filter
-mage, can't reduce), **Zealots** (filter cleric), **False Trigger** (filter
-rogue), **Gladiator** (lead 4, grows, can't reduce), **Troll** (lead 10 +4/level,
-grows), **Shadow** / **Wright** (lead 6, grows, can't be halved), **Cursed Ring**
-(lead 2, can't reduce, poison 2/room), **Black Tentacles** (`damage_all` 1 +
-`damage_rear` 5), **Maze** (`damage_all` 4, `poison_ticks` 3), **Trap Makers
-Workshop** / **Beast Tamer** (`room_aura` +2 to other traps / creatures).
+The twelve advanced rooms (one copy per player): **Antimagic Room** (`damage_all`
+4, filter mage, can't reduce), **Zealots** (filter cleric), **False Trigger**
+(filter rogue), **Gladiator** (lead 4 +2/level, grows, can't reduce), **Troll** (lead 10 +4/level,
+grows), **Shadow** (`damage_rear` 6 +2/level, grows, can't be halved — a fast undead
+snowball that picks off the weakest first), **Wight** (lead 6, `draw_on_death` —
+a card-advantage drainer), **Mirror**
+(`lead_max_party_hp` — an unreducible lead hit for the party's highest max HP),
+**Black Tentacles** (`damage_all` 1 + `damage_rear` 5), **Maze** (`damage_all` 4,
+`poison_ticks` 3), **Trap Maker's Workshop** / **Hobgoblin Beastmaster** (`room_aura` +2 to
+other traps / creatures).
+
+Cursed Ring moved to the **basic** rooms (arcane+riches trap, lead 2, can't
+reduce, poison 2/room); Soul Leach was removed, and Pit gained `draw_on_death` to
+keep four draw-on-death basics.
 
 A `room_aura` never affects the granting room or the boss; it applies to every
 other room that matches. The boss `room_bonuses` and a room `room_aura` add to a
@@ -288,8 +308,8 @@ a chosen room, so those cards need a room target — the others do not:
 
 ```yaml
 effect:
-  add_damage: 2        # +N to the targeted room this crawl  (Reinforcements)
-  unreducible: true    # the targeted room can't be reduced  (Expose Weakness)
+  add_damage: 2        # +N to the targeted room this crawl  (Bolster)
+  unreducible: true    # the targeted room can't be reduced  (Counter)
   zero: true           # the targeted room deals 0           (Sabotage)
   retreat: true        # party turns back at the targeted room (Retreat)
   draw_rooms: 2        # the player draws N room cards        (Blueprints)
@@ -302,8 +322,8 @@ owner points), but the chosen room and everything after — including the boss �
 are skipped, and the owner takes **no wound** (the survivors escaped). Targeting
 the entrance (room 0) is a full retreat with no crawl at all.
 
-The five ability cards: **Reinforcements** (`add_damage: 2`), **Expose
-Weakness** (`unreducible: true`), **Sabotage** (`zero: true`), **Retreat**
+The five ability cards: **Bolster** (`add_damage: 2`), **Counter**
+(`unreducible: true`), **Sabotage** (`zero: true`), **Retreat**
 (`retreat: true`), **Blueprints** (`draw_rooms: 2`).
 
 ## YAML schema
@@ -360,7 +380,7 @@ heroes:
 
 ability_cards:
   - id: ability_reinforcements
-    name: Reinforcements
+    name: Bolster
     text: "+2 damage to a room this crawl."
     effect:
       add_damage: 2

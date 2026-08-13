@@ -47,6 +47,11 @@ object Palette {
     val GameOverBorder = Color(0xFFB8860B)
     val DeadChip = Color(0xFFBB0000)
     val DyingBg = Color(0xFFFBE3E6) // light red for a hero predicted to die
+
+    // Fleeing (a Retreat) — amber, to read distinctly from a green survival.
+    val FledBg = Color(0xFFFDF0DD)
+    val FledBorder = Color(0xFFE0A94D)
+    val FledText = Color(0xFFB4791E)
 }
 
 /** Emoji art and bait formatting — the Android analogue of CardPresenter. */
@@ -64,7 +69,7 @@ object CardArt {
         "boss_lich" to "☠️", "boss_oni" to "👹",
         "boss_vampire" to "🧛", "boss_medusa" to "🐍",
         "boss_goblin_chieftain" to "👺", "boss_malevolent_spirit" to "👻",
-        "boss_kobold_chieftain" to "🐲", "boss_necromancer" to "🧟"
+        "boss_kobold_chieftain" to "🐲", "boss_necromancer" to "🪦"
     )
 
     fun heroArt(id: String): String = heroArt[id] ?: "🧝"
