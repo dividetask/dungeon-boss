@@ -253,8 +253,9 @@ fun BossCardView(
     parts: List<Int>? = null,
     ownerLabel: String? = null,
     onInfo: (() -> Unit)? = null,
-    // When expanded (boss selection) the card is double width and shows the full
-    // name; otherwise it uses the compact width and the boss's short name.
+    // When expanded (boss selection) the card is a little wider — just enough to
+    // read the full boss name — and shows it; otherwise it uses the compact width
+    // and the boss's short name.
     expanded: Boolean = false,
     baitHighlight: Set<Bait> = emptySet(),
     baitGlow: Float = 1f
@@ -262,7 +263,7 @@ fun BossCardView(
     WithInfo(onInfo) {
         CardFrame(
             Palette.BossBg, Palette.BossBorder, modifier, highlighted,
-            width = if (expanded) CARD_WIDTH * 2 else CARD_WIDTH
+            width = if (expanded) CARD_WIDTH * 3 / 2 else CARD_WIDTH
         ) {
             val title = if (expanded) boss.name else boss.shortName
             CardHeader(CardArt.bossArt(boss.id), title + (ownerLabel?.let { " ($it)" } ?: ""))
